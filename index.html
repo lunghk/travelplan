@@ -1,0 +1,2510 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chai Chu 旅行記錄</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
+
+    <!-- Custom Styles -->
+    <style>
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+        body {
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+
+    <!-- Import Maps for React & Libraries -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+        }
+    }
+    </script>
+
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-[#F8F9FA] dark:bg-gray-950 transition-colors duration-300 antialiased selection:bg-[rgba(var(--primary-rgb),0.3)] selection:text-[#2D3436]">
+    
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo, createContext, useContext, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+          MapPin, Calendar, Plus, MoreHorizontal, LayoutDashboard, 
+          JapaneseYen, Briefcase, Settings, ChevronRight, Utensils, 
+          Camera, Train, Hotel, ShoppingBag, Trash2, GripVertical,
+          CheckCircle2, Circle, Sun, CloudSun, CloudRain, Snowflake,
+          ArrowRightLeft, Home, Wallet, Pencil, X, Check, ArrowLeft,
+          LogOut, Upload, Image as ImageIcon, CalendarCheck, Users, 
+          ClipboardList, Plane, Ticket, UserPlus, Sparkles,
+          Palette, Moon, Type, ChevronDown, ChevronUp, User, Menu,
+          Car, MoreVertical, Paperclip, Copy, Clock
+        } from 'lucide-react';
+
+        // --- Constants & Config ---
+        const ACTIVITY_TYPES = {
+          Food: { icon: Utensils, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900/30', label: '餐廳' },
+          Sightseeing: { icon: Camera, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900/30', label: '景點' },
+          Transport: { icon: Train, color: 'text-emerald-500', bg: 'bg-emerald-100 dark:bg-emerald-900/30', label: '交通' },
+          Hotel: { icon: Hotel, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900/30', label: '住宿' },
+          Shopping: { icon: ShoppingBag, color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-900/30', label: '購物' },
+        };
+
+        const THEME_PRESETS = [
+          { name: '蜜柑橘', color: '#FF9F1C' },
+          { name: '櫻花粉', color: '#FFB7C5' },
+          { name: '抹茶綠', color: '#88B04B' },
+          { name: '富士藍', color: '#4D96FF' },
+          { name: '江戶紫', color: '#7058A3' },
+          { name: '暗夜黑', color: '#2D3436' },
+        ];
+
+        const DEFAULT_CHECKLIST_ITEMS = [
+          "✈️ 護照、簽證", "💳 信用卡、現金", "📱 手機、充電器", "🧳 行李打包",
+          "🏨 飯店預訂確認", "🎫 機票確認", "💊 常用藥品", "📸 相機、記憶卡",
+          "🌂 雨具", "🔌 轉接頭"
+        ];
+
+        // Helper: Convert Hex to RGB
+        const hexToRgb = (hex) => {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+          return result ? `${parseInt(result[1], 16)} ${parseInt(result[2], 16)} ${parseInt(result[3], 16)}` : '255 159 28';
+        };
+
+        // Helper: Image Processing
+        const processImageUpload = (file) => {
+          return new Promise((resolve, reject) => {
+            if (!file) return reject("No file provided");
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+              const img = new Image();
+              img.src = event.target.result;
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const MAX_SIZE = 1200; 
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                  if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                } else {
+                  if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+              };
+            };
+            reader.onerror = error => reject(error);
+          });
+        };
+
+        // Helper: Safe UTC Date Parsing
+        const parseDateUTC = (dateStr) => {
+          if (!dateStr) return new Date();
+          const [y, m, d] = dateStr.split('-').map(Number);
+          return new Date(Date.UTC(y, m - 1, d));
+        };
+
+        // Helper: Calculate Duration
+        const calculateDuration = (start, end) => {
+          if (!start || !end) return "";
+          const startDate = parseDateUTC(start);
+          const endDate = parseDateUTC(end);
+          const diffTime = Math.abs(endDate - startDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return `(${diffDays + 1}天${diffDays}夜)`;
+        };
+
+        // Helper: Format Date for Display
+        const formatDateDisplay = (dateStr) => {
+          if (!dateStr) return "";
+          const [y, m, d] = dateStr.split('-');
+          const dateObj = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+          const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+          const dayOfWeek = weekdays[dateObj.getDay()];
+          return `${parseInt(m)}月${parseInt(d)}日(星期${dayOfWeek})`;
+        };
+
+        // --- Mock Data ---
+        const INITIAL_DATA = {
+          appName: "Chai Chu 旅行記錄",
+          themeColor: "#FFB7C5",
+          settings: { fontSize: 16, darkMode: false },
+          trips: [
+            {
+              id: 'uuid-1',
+              title: '2026高寶齊豬福岡之旅',
+              startDate: '2026-03-11',
+              endDate: '2026-03-16', 
+              status: 'planning',
+              coverImage: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=1000&auto=format&fit=crop',
+              dailyItinerary: [
+                {
+                  day: 1, date: '2026-03-11', weather: 'sun', temp: '12°C / 18°C',
+                  activities: [
+                    { id: 'a1_transport', time: '16:00', type: 'Transport', location: '去三井LaLaport福岡方法', address: '福岡機場', link: '', mapLink: '', operatingHours: '', notes: '搭乘機場巴士從福岡機場到LaLaport最快15分鐘，單程票330yen。\n到入境大堂請依照「市內バス」（市區公車）指標前往巴士停靠區的「6、7 號」站牌候車。\n抵達 LaLaport福岡後，落車先比錢!!\n車中間上車，車頭落車。', cost: 330, attachment: '' },
+                    { id: 'a1', time: '16:30', type: 'Shopping', location: '三井LaLaport福岡', address: '6 Chome-23-1 Naka, Hakata Ward, Fukuoka, 812-8627日本', link: 'https://www.google.com/maps/place/LaLaport+%E7%A6%8F%E5%B2%A1/@33.565172,130.4383665,17z/data=!3m2!4b1!5s0x35419057a60ac58d:0xa399b820d4dcbaca!4m6!3m5!1s0x354191e79a67d911:0xe57737261ee4d100!8m2!3d33.5651676!4d130.4409414!16s%2Fg%2F11sr8rncn7?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00 - 21:00', notes: '3樓親子樓層全層都設有地毯超暖心及頂樓還有小動物接觸區', cost: 0, attachment: '' },
+                    { id: 'a1_dinner', time: '18:00', type: 'Food', location: '晚餐於三井LaLaport福岡吃', address: '6 Chome-23-1 Naka, Hakata Ward, Fukuoka, 812-8627日本', link: 'https://mitsui-shopping-park.com/tw/gourmet/lalaport/fukuoka/', operatingHours: '11:00 - 22:00', notes: '在商場內挑選喜歡的餐廳享用晚餐', cost: 0, attachment: '' },
+                    { id: 'a1_transport_back', time: '19:00', type: 'Transport', location: '前往博多車站', address: 'LaLaport福岡門口', link: 'https://jik.nishitetsu.jp/route?f_zahyo_flg=0&f_list=0000%2CD00201&t_zahyo_flg=0&t_list=0000%2CL00372&rightnow_flg=2&sdate=2026%2F03%2F11&stime_h=16&stime_m=40&stime_flg=1&jkn_busnavi=1&syosaiFlg=0', mapLink: '', operatingHours: '', notes: '可以坐44或45巴士來回，在LaLaport門口上車，直接去到博多站，約25分鐘到。單程票270yen，5名大人合共1350yen。', cost: 1350, attachment: '' },
+                    { id: 'a2', time: '19:30', type: 'Shopping', location: '博多阪急', address: '1-1 Hakataekichuogai, Hakata Ward, Fukuoka, 812-0012日本', link: 'https://www.hankyu-dept.co.jp/hakata/index.html', mapLink: 'https://www.google.com/maps/place/%E5%8D%9A%E5%A4%9A%E9%98%AA%E6%80%A5/@33.5893684,130.4172629,17z/data=!3m2!4b1!5s0x354191b808122eff:0xdb78b1ed04a82d0!4m6!3m5!1s0x354191c7ea885905:0xca47a6716a9884ec!8m2!3d33.589364!4d130.4198378!16s%2Fg%2F122dkvg8?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00 - 20:00', notes: '博多車站旁的百貨公司，適合買伴手禮與逛街', cost: 0, attachment: '' },
+                    { id: 'a2_home', time: '20:30', type: 'Transport', location: '博多阪急去Airbnb', address: '祇園町附近', link: 'https://www.navitime.co.jp/zh-tw/transfer/searchlist?orvStationName=%E5%8D%9A%E5%A4%9A%E9%A7%85%E7%AD%91%E7%B4%AB%E5%8F%A3&orvStationCode=00087543&dnvStationName=%E7%A5%87%E5%9C%92%E7%94%BA%EF%BC%88%E7%A6%8F%E5%B2%A1%E5%B8%82%E5%8D%9A%E5%A4%9A%E5%8C%BA%EF%BC%89&dnvStationCode=00026416&defaultCondition=0', mapLink: 'https://www.google.com/maps/dir/6-26+Reisenmachi,+Hakata+Ward,+Fukuoka,+812-0039%E6%97%A5%E6%9C%AC/%E5%8D%9A%E5%A4%9A%E9%98%AA%E6%80%A5+%E6%97%A5%E6%9C%AC%E3%80%92812-0012+Fukuoka,+Hakata+Ward,+Hakataekichuogai,+1%E2%88%921/@33.5920228,130.4149578,17z/data=!3m1!5s0x354191b808122eff:0xdb78b1ed04a82d0!4m14!4m13!1m5!1m1!1s0x354191c02258be3b:0x5018028a15d10e86!2m2!1d130.411351!2d33.5940591!1m5!1m1!1s0x354191c7ea885905:0xca47a6716a9884ec!2m2!1d130.4198378!2d33.589364!3e2?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNC4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行去大約20分鐘，搭JR一個站，出站後大約行5分鐘到Airbnb。', cost: 210, attachment: '' }
+                  ]
+                },
+                { 
+                  day: 2, date: '2026-03-12', weather: 'cloud-sun', temp: '14°C / 20°C', 
+                  activities: [
+                    { id: 'd2_transport_zoo', time: '09:10', type: 'Transport', location: '搭西鐵巴士56號前往福岡巿動植物園', address: '10 Reisenmachi, Hakata Ward, Fukuoka, 812-0039日本', link: 'https://jik.nishitetsu.jp/route?f_zahyo_flg=0&f_list=0001%2C510050&t_zahyo_flg=0&t_list=0001%2C550072&rightnow_flg=2&sdate=2026%2F03%2F11&stime_h=09&stime_m=00&stime_flg=1&jkn_busnavi=1&syosaiFlg=0', mapLink: 'https://www.google.com/maps/place/Okunodo(bus)/@33.5954657,130.4116605,19z/data=!3m1!4b1!4m6!3m5!1s0x354191c1b8531427:0xd6024f9cdf463163!8m2!3d33.5954646!4d130.4123042!16s%2Fg%2F11dfj5wgck?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNS4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '車程大約30分鐘。單程260yen，5名大人1300yen', cost: 1300, attachment: '' },
+                    { id: 'a3', time: '10:00', type: 'Sightseeing', location: '福岡市動植物園', address: '1-1 Minamikoen, Chuo Ward, Fukuoka, 810-0037日本', link: 'https://zoo.city.fukuoka.lg.jp/general/index_tw?utm_source=goodlucktrip', mapLink: 'https://www.google.com/maps/place/%E7%A6%8F%E5%B2%A1%E5%B8%82%E5%8B%95%E6%A4%8D%E7%89%A9%E5%9C%92/@33.572808,130.3884359,17z/data=!3m1!4b1!4m6!3m5!1s0x35419162ab6b8343:0x5b6577993f51259c!8m2!3d33.5728036!4d130.3910108!16s%2Fm%2F03c5gws?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIxOC4wIKXMDSoASAFQAw%3D%3D', operatingHours: '09:00 - 17:00 (16:30最後入園)', notes: '適合家庭同樂的動植物園 (大人合共 3000 yen)', cost: 3000, attachment: '' },
+                    { id: 'a3_lunch', time: '12:00', type: 'Food', location: '午餐於福岡市動植物園吃', address: '1-1 Minamikoen, Chuo Ward, Fukuoka, 810-0037日本', link: 'https://zoo.city.fukuoka.lg.jp/general/index_tw?utm_source=goodlucktrip', mapLink: 'https://www.google.com/maps/place/%E7%A6%8F%E5%B2%A1%E5%B8%82%E5%8B%95%E6%A4%8D%E7%89%A9%E5%9C%92/@33.572808,130.3884359,17z/data=!3m1!4b1!4m6!3m5!1s0x35419162ab6b8343:0x5b6577993f51259c!8m2!3d33.5728036!4d130.3910108!16s%2Fm%2F03c5gws?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIxOC4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '在園區內有兒童餐廳', cost: 0, attachment: '' },
+                    { id: 'd2_transport_dinner', time: '16:00', type: 'Transport', location: '搭西鐵巴士56號前往博多', address: '', link: 'https://jik.nishitetsu.jp/menu', mapLink: '', operatingHours: '', notes: '車程大約31分鐘。單程470yen，5名大人2350yen', cost: 2350, attachment: '' },
+                    { id: 'a4_dinner', time: '17:45', type: 'Food', location: '晚餐於博多之名物料理 喜水丸', address: '福岡県福岡市博多区博多駅中央街1-1 デイトスアネックス 1F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400101/40066674/', mapLink: 'https://www.google.com/maps/search/%E7%A6%8F%E5%B2%A1%E7%9C%8C%E7%A6%8F%E5%B2%A1%E5%B8%82%E5%8D%9A%E5%A4%9A%E5%8C%BA%E5%8D%9A%E5%A4%9A%E9%A7%85%E4%B8%AD%E5%A4%AE%E8%A1%971-1+%E3%83%87%E3%82%A4%E3%83%88%E3%82%B9%E3%82%A2%E3%83%8D%E3%83%83%E3%82%AF%E3%82%B9+1F/@33.5903463,130.4182344,17z/data=!3m1!4b1?authuser=0&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '07:30 - 10:30及10:30 - 23:00', notes: '博多名物料理', cost: 0, attachment: '' },
+                    { id: 'd2_home', time: '20:30', type: 'Transport', location: '博多阪急去Airbnb', address: '祇園町附近', link: 'https://www.navitime.co.jp/zh-tw/transfer/searchlist?orvStationName=%E5%8D%9A%E5%A4%9A%E9%A7%85%E7%AD%91%E7%B4%AB%E5%8F%A3&orvStationCode=00087543&dnvStationName=%E7%A5%87%E5%9C%92%E7%94%BA%EF%BC%88%E7%A6%8F%E5%B2%A1%E5%B8%82%E5%8D%9A%E5%A4%9A%E5%8C%BA%EF%BC%89&dnvStationCode=00026416&defaultCondition=0', mapLink: 'https://www.google.com/maps/dir/6-26+Reisenmachi,+Hakata+Ward,+Fukuoka,+812-0039%E6%97%A5%E6%9C%AC/%E5%8D%9A%E5%A4%9A%E9%98%AA%E6%80%A5+%E6%97%A5%E6%9C%AC%E3%80%92812-0012+Fukuoka,+Hakata+Ward,+Hakataekichuogai,+1%E2%88%921/@33.5920228,130.4149578,17z/data=!3m1!5s0x354191b808122eff:0xdb78b1ed04a82d0!4m14!4m13!1m5!1m1!1s0x354191c02258be3b:0x5018028a15d10e86!2m2!1d130.411351!2d33.5940591!1m5!1m1!1s0x354191c7ea885905:0xca47a6716a9884ec!2m2!1d130.4198378!2d33.589364!3e2?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNC4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行去大約20分鐘，搭JR一個站，出站後大約行5分鐘到Airbnb。', cost: 210, attachment: '' }
+                  ] 
+                },
+                { 
+                  day: 3, date: '2026-03-13', weather: 'cloud', temp: '13°C / 19°C', 
+                  activities: [
+                    { id: 'd3_transport_anpanman', time: '09:50', type: 'Transport', location: '行路去麵包超人館', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/6-26+Reisenmachi,+Hakata+Ward,+Fukuoka,+812-0039%E6%97%A5%E6%9C%AC/%E7%A6%8F%E5%B2%A1%E9%BA%B5%E5%8C%85%E8%B6%85%E4%BA%BA%E5%85%92%E7%AB%A5%E5%8D%9A%E7%89%A9%E9%A4%A8+in+%E8%B3%BC%E7%89%A9%E5%95%86%E5%A0%B4+%E6%97%A5%E6%9C%AC%E3%80%92812-0027+Fukuoka,+%E5%8D%9A%E5%A4%9A%E5%8C%BA%E4%B8%8B%E5%B7%9D%E7%AB%AF%E7%94%BA3%E2%88%921+5F-6F/@33.5941274,130.4073093,18z/data=!3m2!4b1!5s0x354191eb555954b3:0xc62ba71d7363f2b4!4m14!4m13!1m5!1m1!1s0x354191c02258be3b:0x5018028a15d10e86!2m2!1d130.411351!2d33.5940591!1m5!1m1!1s0x354191eb55e903f3:0xaf5e1e06036d057!2m2!1d130.4058425!2d33.5951049!3e2?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNS4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '大約10分鐘', cost: 0, attachment: '' },
+                    { id: 'a5', time: '10:00', type: 'Sightseeing', location: '麵包超人館', address: '福岡縣福岡市博多區下川端町3-1 Hakata', link: 'https://www.fukuoka-anpanman.jp/tc/', mapLink: 'https://www.google.com/maps/place/%E7%A6%8F%E5%B2%A1%E9%BA%B5%E5%8C%85%E8%B6%85%E4%BA%BA%E5%85%92%E7%AB%A5%E5%8D%9A%E7%89%A9%E9%A4%A8+in+%E8%B3%BC%E7%89%A9%E5%95%86%E5%A0%B4/@33.5958926,130.4083398,17z/data=!3m1!5s0x354191eb555954b3:0xc62ba71d7363f2b4!4m14!1m7!3m6!1s0x354191eb55e903f3:0xaf5e1e06036d057!2z56aP5bKh6bq15YyF6LaF5Lq65YWS56ul5Y2a54mp6aSoIGluIOizvOeJqeWVhuWgtA!8m2!3d33.5951049!4d130.4058425!16s%2Fg%2F11j0v0ynyy!3m5!1s0x354191eb55e903f3:0xaf5e1e06036d057!8m2!3d33.5951049!4d130.4058425!16s%2Fg%2F11j0v0ynyy?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIxOC4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00〜17:00', notes: '位於 Riverain 購物商場內', cost: 0, attachment: '' },
+                    { id: 'a5_lunch', time: '12:00', type: 'Food', location: '午餐於麵包超人館吃', address: '福岡縣福岡市博多區下川端町3-1 Hakata', link: 'https://www.fukuoka-anpanman.jp/eat/', mapLink: 'https://www.google.com/maps/place/%E7%A6%8F%E5%B2%A1%E9%BA%B5%E5%8C%85%E8%B6%85%E4%BA%BA%E5%85%92%E7%AB%A5%E5%8D%9A%E7%89%A9%E9%A4%A8+in+%E8%B3%BC%E7%89%A9%E5%95%86%E5%A0%B4/@33.5958926,130.4083398,17z/data=!3m1!5s0x354191eb555954b3:0xc62ba71d7363f2b4!4m14!1m7!3m6!1s0x354191eb55e903f3:0xaf5e1e06036d057!2z56aP5bKh6bq15YyF6LaF5Lq65YWS56ul5Y2a54mp6aSoIGluIOizvOeJqeWVhuWgtA!8m2!3d33.5951049!4d130.4058425!16s%2Fg%2F11j0v0ynyy!3m5!1s0x354191eb55e903f3:0xaf5e1e06036d057!8m2!3d33.5951049!4d130.4058425!16s%2Fg%2F11j0v0ynyy?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIxOC4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '在麵包超人館內享用午餐', cost: 0, attachment: '' },
+                    { id: 'd3_transport_dinner', time: '16:30', type: 'Transport', location: '搭西鐵巴士前往肉之山翔', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/%E7%A6%8F%E5%B2%A1%E9%BA%B5%E5%8C%85%E8%B6%85%E4%BA%BA%E5%85%92%E7%AB%A5%E5%8D%9A%E7%89%A9%E9%A4%A8+in+%E8%B3%BC%E7%89%A9%E5%95%86%E5%A0%B4+%E6%97%A5%E6%9C%AC%E3%80%92812-0027+Fukuoka,+%E5%8D%9A%E5%A4%9A%E5%8C%BA%E4%B8%8B%E5%B7%9D%E7%AB%AF%E7%94%BA3%E2%88%921+5F-6F/Niku+no+Yamasho,+%E7%BE%8E%E5%92%8C%E3%83%93%E3%83%AB+2F+1+Chome-1-17+Daimyo,+Chuo+Ward,+Fukuoka,+810-0041%E6%97%A5%E6%9C%AC/@33.5884651,130.3970567,16.67z/am=t/data=!3m1!5s0x354191eb555954b3:0xc62ba71d7363f2b4!4m14!4m13!1m5!1m1!1s0x354191eb55e903f3:0xaf5e1e06036d057!2m2!1d130.4058425!2d33.5951049!1m5!1m1!1s0x3541911902895b63:0x34e2e451b9e16fd3!2m2!1d130.3956038!2d33.585964!3e3?authuser=0&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行9分鐘去搭巴士Nakasu and Minami-Shinchi，落車Imaizumi 1 chome，4個站6分鐘，210yen，5個大人1050yen，落車行1分鐘到餐廳', cost: 1050, attachment: '' },
+                    { id: 'a6_dinner', time: '17:00', type: 'Food', location: '肉之山翔', address: '福岡県福岡市中央区大名1-1-17 美和ビル 2F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400103/40064291/', mapLink: 'https://www.google.com/maps/place/%E6%97%A5%E6%9C%AC%E3%80%92810-0041+Fukuoka,+Chuo+Ward,+Daimy%C5%8D,+1-ch%C5%8Dme%E2%88%921%E2%88%9217+%E7%BE%8E%E5%92%8C%E3%83%93%E3%83%AB+2f/@33.5859677,130.3930207,17z/data=!3m1!4b1!4m5!3m4!1s0x354191841fdea32d:0xce78f4fb261dd0bf!8m2!3d33.5859633!4d130.3955956?authuser=0&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '11:00 - 22:30', notes: '', cost: 0, attachment: '' },
+                    { id: 'd3_transport_parco', time: '19:25', type: 'Transport', location: '由餐廳前往福岡PARCO', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/Niku+no+Yamasho,+%E7%BE%8E%E5%92%8C%E3%83%93%E3%83%AB+2F+1+Chome-1-17+Daimyo,+Chuo+Ward,+Fukuoka,+810-0041%E6%97%A5%E6%9C%AC/PARCO%E7%A6%8F%E5%B2%A1,+2+Chome-11-1+Tenjin,+Chuo+Ward,+Fukuoka,+810-0001%E6%97%A5%E6%9C%AC/@33.5883582,130.3949826,17z/data=!3m1!4b1!4m14!4m13!1m5!1m1!1s0x3541911902895b63:0x34e2e451b9e16fd3!2m2!1d130.3956038!2d33.585964!1m5!1m1!1s0x3541918f00155555:0x468bf115d33eede0!2m2!1d130.3986652!2d33.5907445!3e3?authuser=0&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行去福岡PARCO12分鐘，搭車15分鐘', cost: 0, attachment: '' },
+                    { id: 'd3_parco', time: '19:30', type: 'Shopping', location: '福岡PARCO', address: '2 Chome-11-1 Tenjin, Chuo Ward, Fukuoka, 810-0001日本', link: 'https://fukuoka.parco.jp/', mapLink: 'https://www.google.com/maps/place/%E7%A6%8F%E5%B2%A1PARCO/@33.5907489,130.3960903,17z/data=!3m1!4b1!4m6!3m5!1s0x3541918f00155555:0x468bf115d33eede0!8m2!3d33.5907445!4d130.3986652!16s%2Fg%2F12qbhb677?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00–20:30', notes: '人氣購物商場，好逛好買', cost: 0, attachment: 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1000&q=80' },
+                    { id: 'd3_mina', time: '19:30', type: 'Shopping', location: 'mina天神', address: '4 Chome-3-8 Tenjin, Chuo Ward, Fukuoka, 810-0001日本', link: 'https://www.mina-tenjin.com/', mapLink: 'https://www.google.com/maps/place/Mina+%E5%A4%A9%E7%A5%9E/@33.5927599,130.395938,17z/data=!3m1!4b1!4m6!3m5!1s0x3541918e7beb23b5:0xfa501c2d5ea93026!8m2!3d33.5927599!4d130.3985129!16s%2Fg%2F1tjf80z5?entry=ttu&g_ep=EgoyMDI2MDIyMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00–20:00', notes: '天神商圈必逛商場，適合採買', cost: 0, attachment: '' },
+                    { id: 'd3_home', time: '20:00', type: 'Transport', location: '由商場返Airbnb', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/%E7%A6%8F%E5%B2%A1PARCO+%E6%97%A5%E6%9C%AC%E3%80%92810-0001+Fukuoka,+Chuo+Ward,+Tenjin,+2+Chome%E2%88%9211%E2%88%921/6-26+Reisenmachi,+Hakata+Ward,+Fukuoka,+812-0039%E6%97%A5%E6%9C%AC/@33.5919642,130.3997977,18z/am=t/data=!4m14!4m13!1m5!1m1!1s0x3541918f00155555:0x468bf115d33eede0!2m2!1d130.3986652!2d33.5907445!1m5!1m1!1s0x354191c02258be3b:0x5018028a15d10e86!2m2!1d130.411351!2d33.5940591!3e3?authuser=1&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '上車Tenjin Fukuoka Bank Home Office (13A)搭去Okunodo，7個站10分鐘，落車行1分鐘，返到Airbnb', cost: 0, attachment: '' }
+                  ] 
+                },
+                { 
+                  day: 4, date: '2026-03-14', weather: 'rain', temp: '11°C / 16°C', 
+                  activities: [
+                    { id: 'd4_transport_kokura', time: '09:50', type: 'Transport', location: '博多去小倉競馬場', address: '博多車站', link: 'https://www.navitime.co.jp/zh-tw/transfer/searchlist?orvStationName=%E5%8D%9A%E5%A4%9A&orvStationCode=00007420&dnvStationName=%E7%AB%B6%E9%A6%AC%E5%A0%B4%E5%89%8D%EF%BC%88%E7%A6%8F%E5%B2%A1%E7%9C%8C%EF%BC%89&dnvStationCode=00001760&defaultCondition=4', mapLink: '', operatingHours: '', notes: '搭乘新幹線（約15-20分鐘）至小倉站，轉乘北九州單軌電車至「競馬場前站」（約10分鐘），全程約45-50分鐘。約2410yen，5個大人合共12,050yen', cost: 12050, attachment: '' },
+                    { id: 'a7', time: '10:40', type: 'Sightseeing', location: '小倉賽馬場', address: '4 Chome-5-1 Kitagata, Kokuraminami Ward, Kitakyushu, Fukuoka 802-0841日本', link: 'https://www.jra.go.jp/facilities/race/kokura/', mapLink: 'https://www.google.com/maps/place/%E5%B0%8F%E5%80%89%E8%B3%BD%E9%A6%AC%E5%A0%B4/@33.8432084,130.8720817,17z/data=!3m1!4b1!4m6!3m5!1s0x3543c72966bbada5:0x89b678adaf65f537!8m2!3d33.843204!4d130.8746566!16s%2Fm%2F02pjy_b?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMy4wIKXMDSoASAFQAw%3D%3D', operatingHours: '09:00 - 17:00', notes: '體驗日本賽馬文化與廣闊場地', cost: 0, attachment: '' },
+                    { id: 'd4_transport_lunch', time: '12:30', type: 'Transport', location: '搭北九州單軌電車去午餐', address: '', link: '', mapLink: '', operatingHours: '', notes: '由競馬場前去平和通，5個站大約10分鐘。250yen，5個大人合共1250yen。', cost: 1250, attachment: '' },
+                    { id: 'a8_lunch', time: '13:00', type: 'Food', location: '田舍庵 小倉本店', address: '1 Chome-1-13 Kajimachi, Kokurakita Ward, Kitakyushu, Fukuoka 802-0004日本', link: 'https://tabelog.com/tw/fukuoka/A4004/A400401/40000419/', mapLink: 'https://www.google.com/maps/place/%E9%B0%BB%E9%AD%9A+%E7%94%B0%E8%88%8D%E5%BA%B5/@33.8835129,130.8791947,17z/data=!3m1!4b1!4m6!3m5!1s0x3543bf4dc1d91b5b:0x12a5d649eb2d9a7d!8m2!3d33.8835085!4d130.8817696!16s%2Fg%2F1tf6v4hl?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMy4wIKXMDSoASAFQAw%3D%3D', operatingHours: '11:00–20:00', notes: '知名鰻魚飯老店', cost: 0, attachment: '' },
+                    { id: 'd4_transport_tanga', time: '13:50', type: 'Transport', location: '去旦過巿場', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/1-ch%C5%8Dme-1-13+Kajimachi,+Kokurakita+Ward,+Kitakyushu,+Fukuoka+802-0004%E6%97%A5%E6%9C%AC/%E6%97%A6%E9%81%8E%E5%B8%82%E5%A0%B4+%E6%97%A5%E6%9C%AC%E3%80%92802-0006+Fukuoka,+Kitakyushu,+Kokurakita+Ward,+Uomachi,+4+Chome%E2%88%922%E2%88%9218/@33.8822918,130.8793864,18z/data=!3m1!4b1!4m14!4m13!1m5!1m1!1s0x3543bf4dea77a4cb:0xdaf00bd26d0a83e1!2m2!1d130.8818633!2d33.8835231!1m5!1m1!1s0x3543bf52e5a04e5f:0xfefdb0c98463ffe9!2m2!1d130.8794631!2d33.8813113!3e2?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNS4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行去旦過巿場7分鐘。', cost: 0, attachment: '' },
+                    { id: 'a8_tanga', time: '14:00', type: 'Food', location: '旦過市場', address: '福岡縣北九州市小倉北區魚町4-2-18', link: 'https://www.tangaichiba.jp/?utm_source=goodlucktrip', mapLink: 'https://www.google.com/maps/place/%E6%97%A6%E9%81%8E%E5%B8%82%E5%A0%B4/@33.8813157,130.8768882,17z/data=!3m1!4b1!4m6!3m5!1s0x3543bf52e5a04e5f:0xfefdb0c98463ffe9!8m2!3d33.8813113!4d130.8794631!16s%2Fg%2F120pyt50?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMy4wIKXMDSoASAFQAw%3D%3D', operatingHours: '依各店家而異', notes: '被稱為「北九州的廚房」，適合品嚐在地美食與海鮮', cost: 0, attachment: '' },
+                    { id: 'd4_transport_saintcity', time: '14:20', type: 'Transport', location: '去SAINTcity', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/%E6%97%A6%E9%81%8E%E5%B8%82%E5%A0%B4+%E6%97%A5%E6%9C%AC%E3%80%92802-0006+Fukuoka,+Kitakyushu,+Kokurakita+Ward,+Uomachi,+4+Chome%E2%88%922%E2%88%9218/SAINTcity+Shopping+Mall,+3+Chome-1-1+Kyomachi,+Kokurakita+Ward,+Kitakyushu,+Fukuoka+802-0002%E6%97%A5%E6%9C%AC/@33.8830941,130.8784125,17z/data=!3m1!4b1!4m14!4m13!1m5!1m1!1s0x3543bf52e5a04e5f:0xfefdb0c98463ffe9!2m2!1d130.8794631!2d33.8813113!1m5!1m1!1s0x3543bf4c2f670145:0xbdcbf138fbb1d1c8!2m2!1d130.8825117!2d33.8851233!3e2?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNS4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行去SAINTcity10分鐘。', cost: 0, attachment: '' },
+                    { id: 'a9_saintcity', time: '14:30', type: 'Shopping', location: 'SAINTcity Shopping Mall', address: '3 Chome-1-1 Kyomachi, Kokurakita Ward, Kitakyushu, Fukuoka 802-0002日本', link: 'https://saintcity.jp/', mapLink: 'https://www.google.com/maps/place/SAINTcity+Shopping+Mall/@33.8849754,130.8812312,17.25z/data=!4m7!3m6!1s0x3543bf4c2f670145:0xbdcbf138fbb1d1c8!4b1!8m2!3d33.8851233!4d130.8825117!16s%2Fg%2F1tg9kxv4?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMy4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00–20:00', notes: '小倉站前的大型購物中心', cost: 0, attachment: '' },
+                    { id: 'd4_transport_hakata', time: '17:00', type: 'Transport', location: '小倉去博多', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/Kokura+Station,+1+Chome-1-1+Asano,+Kokurakita+Ward,+Kitakyushu,+Fukuoka+802-0001%E6%97%A5%E6%9C%AC/%E5%8D%9A%E5%A4%9A%E9%98%AA%E6%80%A5+%E6%97%A5%E6%9C%AC%E3%80%92812-0012+Fukuoka,+Hakata+Ward,+Hakataekichuogai,+1%E2%88%921/@33.7446791,130.4814827,11z/data=!4m13!4m12!1m5!1m1!1s0x3543bf4bf949501b:0x6918bbd9f307b06c!2m2!1d130.8825758!2d33.8869679!1m5!1m1!1s0x354191c7ea885905:0xca47a6716a9884ec!2m2!1d130.4198378!2d33.589364?authuser=1&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '小倉站搭乘新幹線（約15-20分鐘）至博多站，全程約15分鐘，約2160yen，5個大人10800yen', cost: 10800, attachment: '' },
+                    { id: 'a10_dinner_hankyu', time: '17:30', type: 'Food', location: '晚餐於博多阪急吃', address: '1-1 Hakataekichuogai, Hakata Ward, Fukuoka, 812-0012日本', link: 'https://www.hankyu-dept.co.jp/hakata/index.html', mapLink: 'https://www.google.com/maps/place/%E5%8D%9A%E5%A4%9A%E9%98%AA%E6%80%A5/@33.5893684,130.4172629,17z/', operatingHours: '10:00 - 20:00 (餐廳街通常營業至較晚)', notes: '在博多阪急挑選喜歡的餐廳享用晚餐。', cost: 0, attachment: '' },
+                    { id: 'd4_home', time: '20:30', type: 'Transport', location: '博多阪急去Airbnb', address: '祇園町附近', link: 'https://www.navitime.co.jp/zh-tw/transfer/searchlist?orvStationName=%E5%8D%9A%E5%A4%9A%E9%A7%85%E7%AD%91%E7%B4%AB%E5%8F%A3&orvStationCode=00087543&dnvStationName=%E7%A5%87%E5%9C%92%E7%94%BA%EF%BC%88%E7%A6%8F%E5%B2%A1%E5%B8%82%E5%8D%9A%E5%A4%9A%E5%8C%BA%EF%BC%89&dnvStationCode=00026416&defaultCondition=0', mapLink: 'https://www.google.com/maps/dir/6-26+Reisenmachi,+Hakata+Ward,+Fukuoka,+812-0039%E6%97%A5%E6%9C%AC/%E5%8D%9A%E5%A4%9A%E9%98%AA%E6%80%A5+%E6%97%A5%E6%9C%AC%E3%80%92812-0012+Fukuoka,+Hakata+Ward,+Hakataekichuogai,+1%E2%88%921/@33.5920228,130.4149578,17z/data=!3m1!5s0x354191b808122eff:0xdb78b1ed04a82d0!4m14!4m13!1m5!1m1!1s0x354191c02258be3b:0x5018028a15d10e86!2m2!1d130.411351!2d33.5940591!1m5!1m1!1s0x354191c7ea885905:0xca47a6716a9884ec!2m2!1d130.4198378!2d33.589364!3e2?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNC4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行去大約20分鐘，搭JR一個站，出站後大約行5分鐘到Airbnb。', cost: 210, attachment: '' }
+                  ] 
+                },
+                { 
+                  day: 5, date: '2026-03-15', weather: 'sun', temp: '15°C / 21°C', 
+                  activities: [
+                    { id: 'd5_transport_dazaifu', time: '09:50', type: 'Transport', location: '搭車去太宰府站', address: '', link: 'http://jik.nishitetsu.jp/trainroute?f=traintimetable&list=0002,0010&_ga=2.203204625.102637932.1772673735-613614339.1772102360', mapLink: '', operatingHours: '', notes: '從地鐵「祇園站」搭乘空港線至「天神站」 -> 步行至「西鐵福岡（天神）站」 -> 搭乘西鐵天神大牟田線（在二日市轉乘）至「太宰府站」。大約30分鐘，\n\n請注意，二日市有兩個車站，小心別把西鐵二日市站、JR 二日市站搞混了，兩站並不相通，之間距離步行約需 15 分鐘。', cost: 0, attachment: 'https://www.nishitetsu.jp/assets/images/common/train_routemap_ext.png' },
+                    { id: 'a14_dazaifu', time: '10:40', type: 'Sightseeing', location: '太宰府天滿宮', address: '4 Chome-7-1 Saifu, Dazaifu, Fukuoka 818-0117日本', link: '', mapLink: 'https://www.google.com/maps/place/%E5%A4%AA%E5%AE%B0%E5%BA%9C%E5%A4%A9%E6%BB%BF%E5%AE%AE/@33.5471489,130.444292,15.5z/data=!4m6!3m5!1s0x35419b9f2aebfbcd:0xb824d1aba75fae97!8m2!3d33.5213697!4d130.5348239!16zL20vMDd2XzAz?authuser=0&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '06:00 - 19:00', notes: '供奉學問之神，周邊有熱鬧的表參道可以逛街、吃梅枝餅。', cost: 0, attachment: '' },
+                    { id: 'a14_lunch_ramen', time: '11:30', type: 'Food', location: '拉麵 魁源 太宰府店', address: '1 Chome-10-32 Saifu, Dazaifu, Fukuoka 818-0117日本', link: 'https://tabelog.com/tw/fukuoka/A4003/A400301/40051088/', mapLink: 'https://www.google.com/maps/place/%E6%8B%89%E9%BA%B5+%E9%AD%81%E6%BA%90+%E5%A4%AA%E5%AE%B0%E5%BA%9C%E5%BA%97/@33.5191513,130.5284473,17z/data=!3m1!4b1!4m6!3m5!1s0x35419b2ea544b931:0x5d8cf4a7196a1d34!8m2!3d33.5191469!4d130.5310222!16s%2Fg%2F11fk1qp09n?authuser=0&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00–16:00', notes: '太宰府周邊的人氣拉麵店', cost: 0, attachment: '' },
+                    { id: 'd5_transport_birthday', time: '13:00', type: 'Transport', location: '搭車去Birthday', address: '', link: 'https://www.nishitetsu.jp/train/rosen/', mapLink: '', operatingHours: '', notes: '去西鐵天神大牟田線（在二日市轉乘）「太宰府站」搭到去「二日市」，要轉乘西鐵天神大牟田線「二日市」再搭去「井尻」，出站再行15分鐘。', cost: 0, attachment: '' },
+                    { id: 'a15_birthday', time: '14:00', type: 'Shopping', location: '去Birthday買BB用品', address: '34-7 Yokote Minamimachi, Minami Ward, Fukuoka, 811-1312日本', link: 'https://www.s-birthday.com/', mapLink: 'https://www.google.com/maps/place/Birthday/@33.5471553,130.4419606,14z/data=!4m6!3m5!1s0x354190e812c4efbf:0x9f7c660a7a03aeb9!8m2!3d33.5442581!4d130.4422181!16s%2Fg%2F11btrs2z0g?authuser=0&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00–20:00', notes: '', cost: 0, attachment: '' },
+                    { id: 'd5_transport_hankyu', time: '16:30', type: 'Transport', location: '返博多阪急食晚餐', address: '', link: 'https://japantravel.navitime.com/zh-tw/area/jp/railroad/00000010/', mapLink: 'https://www.google.com/maps/dir/34-7+Yokote+Minamimachi,+Minami+Ward,+Fukuoka,+811-1312%E6%97%A5%E6%9C%AC/%E5%8D%9A%E5%A4%9A%E9%98%AA%E6%80%A5+%E6%97%A5%E6%9C%AC%E3%80%92812-0012+Fukuoka,+Hakata+Ward,+Hakataekichuogai,+1%E2%88%921/@33.5671398,130.4051865,14z/am=t/data=!4m15!4m14!1m5!1m1!1s0x354190e812c1dde1:0x975858d5efcf0775!2m2!1d130.4422165!2d33.5443461!1m5!1m1!1s0x354191c7ea885905:0xca47a6716a9884ec!2m2!1d130.4198378!2d33.589364!3e3!5i2?authuser=1&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '要喺Birthday去搭車，行20分鐘去鹿兒島本線「笹原」搭去「博多」，出站行5分鐘到博多阪急', cost: 0, attachment: '' },
+                    { id: 'a12_dinner', time: '17:30', type: 'Food', location: '晚餐於博多華味鳥 川端通店吃', address: '日本〒810-0801 Fukuoka, Hakata Ward, Nakasu, 5 Chome−4−24 トリゼンビル', link: 'https://tabelog.com/tw/fukuoka/A4001/A400102/40000077/', mapLink: 'https://www.google.com/maps/place/%E6%B0%B4%E7%82%8A%E6%96%99%E7%90%86+%E5%8D%9A%E5%A4%9A%E8%8F%AF%E5%91%B3%E9%B3%A5+%E4%B8%AD%E6%B4%B2%E6%9C%AC%E5%BA%97/@33.5939893,130.4011673,17z/data=!3m2!4b1!5s0x3541919304db882f:0x28a368fa06651524!4m6!3m5!1s0x3541919305244793:0x1d339089a8c4b542!8m2!3d33.5939849!4d130.4037422!16s%2Fg%2F1ttytjck?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMy4wIKXMDSoASAFQAw%3D%3D', operatingHours: '一至五 17:00-23:00 | 六 11:30-15:00, 17:00-23:00 | 日,假 11:30-15:00, 17:00-22:00', notes: '最後點餐：午餐 14:00 / 晚餐 一至六 22:00, 日假 21:00\n著名的水炊鍋料理', cost: 0, attachment: '' },
+                    { id: 'd5_transport_hakata_dinner', time: '19:30', type: 'Transport', location: '餐廳去博多運河城', address: '博多運河城', link: '', mapLink: 'https://www.google.com/maps/dir/%E6%B0%B4%E7%82%8A%E6%96%99%E4%BA%AD+%E5%8D%9A%E5%A4%9A%E8%8F%AF%E5%91%B3%E9%B3%A5+%E5%8D%9A%E5%A4%9A%E7%AB%99%E5%89%8D%E5%BA%97+%E6%97%A5%E6%9C%AC%E3%80%92812-0011+Fukuoka,+Hakata+Ward,+Hakata+Ekimae,+3+Chome%E2%88%9223%E2%88%9217+1F/%E5%8D%9A%E5%A4%9A%E9%81%8B%E6%B2%B3%E5%9F%8E+%E6%97%A5%E6%9C%AC%E3%80%92812-0018+Fukuoka,+Hakata+Ward,+Sumiyoshi,+1+Chome%E2%88%922/@33.589443,130.412673,18z/data=!3m1!4b1!4m14!4m13!1m5!1m1!1s0x354191b8dec912b3:0x8edb00f0d51d8e27!2m2!1d130.4168971!2d33.5884286!1m5!1m1!1s0x354191958981c361:0xe0edba177a7419d1!2m2!1d130.4109478!2d33.5896305!3e2?authuser=1&entry=ttu&g_ep=EgoyMDI2MDMwMi4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行大約10分鐘。', cost: 0, attachment: '' },
+                    { id: 'a11_canalcity', time: '19:40', type: 'Shopping', location: '博多運河城', address: '1 Chome-2 Sumiyoshi, Hakata Ward, Fukuoka, 812-0018日本', link: 'https://canalcity.co.jp/zh-tw', mapLink: 'https://www.google.com/maps/place/%E5%8D%9A%E5%A4%9A%E9%81%8B%E6%B2%B3%E5%9F%8E/@33.5896349,130.4083729,17z/data=!3m1!4b1!4m6!3m5!1s0x354191958981c361:0xe0edba177a7419d1!8m2!3d33.5896305!4d130.4109478!16s%2Fm%2F04zxt4t?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMy4wIKXMDSoASAFQAw%3D%3D', operatingHours: '10:00–21:00', notes: '大型綜合商業設施，有音樂噴泉水舞秀可以觀賞', cost: 0, attachment: '' },
+                    { id: 'a12_lunch_canal', time: '21:00', type: 'Food', location: '宵夜於博多運河城食', address: '1 Chome-2 Sumiyoshi, Hakata Ward, Fukuoka, 812-0018日本', link: 'https://canalcity.co.jp/zh-tw/restaurant', mapLink: '', operatingHours: '11:00 - 23:00', notes: '在運河城內挑選喜歡的餐廳享用宵夜', cost: 0, attachment: '' }
+                  ] 
+                },
+                { 
+                  day: 6, date: '2026-03-16', weather: 'sun', temp: '16°C / 22°C', 
+                  activities: [
+                    { id: 'd6_transport_kushida', time: '10:00', type: 'Transport', location: '去櫛田神社', address: '', link: '', mapLink: 'https://www.google.com/maps/dir/Hakata+Hanamidori+(Kawabata+Street+Store),+4-210+Kamikawabatamachi,+Hakata+Ward,+Fukuoka,+812-0026%E6%97%A5%E6%9C%AC/%E6%AB%9B%E7%94%B0%E7%A5%9E%E7%A4%BE+%E6%97%A5%E6%9C%AC%E3%80%92812-0026+Fukuoka,+Hakata+Ward,+Kamikawabatamachi,+1%E2%88%9241/@33.5925443,130.4101713,21z/data=!4m14!4m13!1m5!1m1!1s0x354191954420489f:0x332eca6ff6e4d46d!2m2!1d130.4101353!2d33.5925696!1m5!1m1!1s0x354191eaaa536a57:0xa1896c7e84458da4!2m2!1d130.4104589!2d33.5929546!3e2?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNS4wIKXMDSoASAFQAw%3D%3D', operatingHours: '', notes: '行去大約5分鐘', cost: 0, attachment: '' },
+                    { id: 'a13_kushida', time: '10:10', type: 'Sightseeing', location: '櫛田神社', address: '1-41 Kamikawabatamachi, Hakata Ward, Fukuoka, 812-0026日本', link: 'https://gofukuoka.jp/zh-tw/spots/detail/26906', mapLink: 'https://www.google.com/maps/place/%E6%AB%9B%E7%94%B0%E7%A5%9E%E7%A4%BE/@33.5935246,130.4046327,17z/data=!3m1!5s0x3541919304db882f:0x28a368fa06651524!4m14!1m7!3m6!1s0x3541919305244793:0x1d339089a8c4b542!2z5rC054KK5paZ55CGIOWNmuWkmuiPr-WRs-mzpSDkuK3mtLLmnKzlupc!8m2!3d33.5939849!4d130.4037422!16s%2Fg%2F1ttytjck!3m5!1s0x354191eaaa536a57:0xa1896c7e84458da4!8m2!3d33.5929546!4d130.4104589!16s%2Fm%2F0ds2_4l?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyMy4wIKXMDSoASAFQAw%3D%3D', operatingHours: '4:00~22:00', notes: '博多總鎮守，可以欣賞巨大的裝飾山笠', cost: 0, attachment: '' },
+                    { id: 'd6_airport', time: '10:40', type: 'Transport', location: '去福岡機場', address: '福岡機場', link: '', mapLink: '', operatingHours: '', notes: '準備搭機返程', cost: 0, attachment: '' }
+                  ] 
+                }
+              ],
+              savedPlaces: {
+                '博多': [
+                  { id: 'w_udon', time: '', type: 'Food', location: '大地烏龍麵', address: '福岡市博多區博多駅前2-1-1，朝日ビルB2', link: 'https://tabelog.com/tw/fukuoka/A4001/A400101/40035066/', mapLink: '', operatingHours: '10:00–15:30、17:00–21:00', notes: '熱門分店：博多車站', cost: 0, attachment: '' },
+                  { id: 'w_takao', time: '', type: 'Food', location: '博多天婦羅TAKAO', address: '福岡市中村區椿町6-9 ESCA地下街', link: 'https://tabelog.com/tw/fukuoka/A4001/A400101/40019565/', mapLink: '', operatingHours: '11:00-22:00', notes: '熱門分店：博多運河城、天神\n天神連結: https://tabelog.com/tw/fukuoka/A4001/A400103/40039135/', cost: 0, attachment: '' },
+                  { id: 'w_fullfull', time: '', type: 'Food', location: 'The Full Full Hakata', address: '福岡市博多區祇園町9-3', link: 'https://tenjo.tw/fullfull/', mapLink: '', operatingHours: '10:00-19:00 (周二公休)', notes: '熱門分店：在櫛田神社前站附近，靠近博多車站、中州、天神\n博多連結: https://tabelog.com/tw/fukuoka/A4001/A400101/40059101/\n天神連結: https://tabelog.com/tw/fukuoka/A4001/A400103/40067859/', cost: 0, attachment: '' },
+                  { id: 'w_daco', time: '', type: 'Food', location: 'DACOMECCA酸種麵包', address: '福岡県福岡市博多区博多駅前4-14-1 1F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400101/40057205/', mapLink: '', operatingHours: '07:00 - 20:00', notes: '', cost: 0, attachment: '' },
+                  { id: 'w_chicken', time: '', type: 'Food', location: '努努雞', address: '福岡市博多區多駅中央街1-1，博多MING 1F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400101/40021768/', mapLink: '', operatingHours: '09:00-21:00', notes: '熱門分店：博多車站、天神\n天神店址: PARCO福岡天神本館B1 "THE 天神" 店', cost: 0, attachment: '' },
+                  { id: 'w_ichiran', time: '', type: 'Food', location: '一蘭拉麵', address: '福岡県福岡市博多区博多駅前2-2-1 福岡センタービル B2F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400101/40000139/', mapLink: '', operatingHours: '08:00 - 22:00', notes: '熱門分店：博多車站、博多運河城、天神、小倉\n運河城: https://tabelog.com/tw/fukuoka/A4001/A400101/40000254/\n天神: https://tabelog.com/tw/fukuoka/A4001/A400103/40023603/\n小倉: https://tabelog.com/tw/fukuoka/A4004/A400401/40000256/', cost: 0, attachment: '' },
+                  { id: 'w_jichiro', time: '', type: 'Food', location: '治一郎 JR博多城店', address: '福岡県福岡市博多区博多駅中央街1-1 博多デイトスいっぴん通り 1F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400101/40052592/', mapLink: '', operatingHours: '10:00 - 21:00', notes: '', cost: 0, attachment: '' },
+                  { id: 'w_boulange', time: '', type: 'Food', location: 'BOUL’ANGE可頌麵包', address: '福岡県福岡市博多区博多駅前2-20-1', link: 'https://www.flavorworks.co.jp/boulange', mapLink: '', operatingHours: '7:30-21:00(周六日8:00)', notes: '地下鐵祇園站與博多站前', cost: 0, attachment: '' },
+                  { id: 'w_fuk', time: '', type: 'Food', location: 'FUK COFFEE', address: '福岡県福岡市博多区祇園町 6-22', link: 'https://tabelog.com/en/fukuoka/A4001/A400101/40060713/', mapLink: '', operatingHours: '08:00 - 20:00', notes: '', cost: 0, attachment: '' }
+                ],
+                '天神': [
+                  { id: 'w_shinshin', time: '', type: 'Food', location: '博多拉麵ShinShin', address: '福岡市中央區天神3-2-19', link: 'https://tabelog.com/tw/fukuoka/A4001/A400103/40004980/', mapLink: '', operatingHours: '11:00-03:00 (周三公休)', notes: '熱門分店：天神、博多車站\n博多車站: https://tabelog.com/tw/fukuoka/A4001/A400101/40035362/', cost: 0, attachment: '' },
+                  { id: 'w_ringo', time: '', type: 'Food', location: 'RINGO蘋果派', address: '福岡市中央區天神2-2-229，天神地下街 西4番街', link: 'https://tabelog.com/tw/fukuoka/A4001/A400103/40045852/dtlrvwlst/', mapLink: '', operatingHours: '09:00–21:00', notes: '福岡僅此一間分店', cost: 0, attachment: '' },
+                  { id: 'w_kogane', time: '', type: 'Food', location: '小金ちゃん', address: '福岡県福岡市中央区天神2', link: 'https://tabelog.com/fukuoka/A4001/A400103/40000201/', mapLink: '', operatingHours: '一至三: 18:30-1:30 | 五六: 18:30-2:30 | 四日: 休息', notes: '交通：乘搭地下鐘至「天神站」，1號出口附近', cost: 0, attachment: '' },
+                  { id: 'w_mipig', time: '', type: 'Sightseeing', location: 'Micro Pig Café', address: 'BROOM Fukuoka 福岡縣福岡市中央區大名2-1-18 5F-C', link: 'https://mipig.cafe/en/', mapLink: '', operatingHours: '10:00-18:00', notes: '交通：乘搭至天神站，再步行10分鐘', cost: 0, attachment: '' }
+                ],
+                '藥院': [
+                  { id: 'w_prince', time: '', type: 'Food', location: 'Prince of the Fruit', address: '福岡県福岡市中央区薬院 4-18-17 レイナビル 1F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400202/40060464/', mapLink: '', operatingHours: '一三四五: 11:00-16:30 | 六日: 10:00-17:30', notes: '', cost: 0, attachment: '' }
+                ],
+                'LaLaport': [
+                  { id: 'w_seiyo', time: '', type: 'Food', location: '久留米拉麵清陽軒', address: '福岡市博多區那珂6-23-1，LaLaport福岡3F', link: 'https://tabelog.com/tw/fukuoka/A4001/A400202/40060464/', mapLink: '', operatingHours: '11:00-21:30', notes: '熱門分店：LaLaport福岡', cost: 0, attachment: '' },
+                  { id: 'w_market', time: '', type: 'Shopping', location: 'Market 351超市', address: 'LaLaport福岡 1樓', link: '', mapLink: '', operatingHours: '', notes: '', cost: 0, attachment: '' }
+                ],
+                '有用網址': [
+                  { id: 'w_vjw', time: '', type: 'Sightseeing', location: 'Visit Japan Web', address: '', link: 'https://services.digital.go.jp/zh-cmn-hant/visit-japan-web/', mapLink: '', operatingHours: '', notes: '日本入境線上通關填寫', cost: 0, attachment: '' },
+                  { id: 'w_nishitetsu', time: '', type: 'Transport', location: '西鐵巴士', address: '', link: 'https://jik.nishitetsu.jp/menu', mapLink: '', operatingHours: '', notes: '福岡市區及西鐵巴士班次查詢', cost: 0, attachment: '' },
+                  { id: 'w_subway', time: '', type: 'Transport', location: '福岡巿地下鐵', address: '', link: 'https://subway.city.fukuoka.lg.jp/', mapLink: '', operatingHours: '', notes: '地下鐵路線、票價與班次資訊', cost: 0, attachment: '' },
+                  { id: 'w_ekitan', time: '', type: 'Transport', location: '駅探 (新幹線/鐵路轉乘)', address: '', link: 'https://ekitan.com/', mapLink: '', operatingHours: '', notes: '新幹線及JR鐵路轉乘時間查詢', cost: 0, attachment: '' }
+                ]
+              },
+              budget: { total: 200000 },
+              checklist: DEFAULT_CHECKLIST_ITEMS.map((item, index) => ({ id: `default-${index}`, item: item, completed: false })),
+              shoppingList: [], // 移除了預設的購物項目
+              reservations: [
+                { id: 'r1', type: 'flight', title: '去程機票', detail: 'CX518 08:45 HKG -> 13:00 FUK', date: '2026-03-11', confirmed: true, attachment: '' },
+                { id: 'r2', type: 'flight', title: '回程機票', detail: 'CX589 16:30 FUK -> 19:35 HKG', date: '2026-03-16', confirmed: true, attachment: '' },
+                { id: 'r3', type: 'hotel', title: 'Airbnb', detail: '3/11 - 3/16 (5 nights)', address: '福岡市博多區Reisenmachi 6-25', confirmed: true, attachment: '', link: 'https://www.google.com/maps/place/6-25+Reisenmachi,+Hakata+Ward,+Fukuoka,+812-0039%E6%97%A5%E6%9C%AC/@33.594004,130.4086222,17z/data=!3m1!4b1!4m6!3m5!1s0x354191c01f56556b:0x4bcafd3f9c9dc2bd!8m2!3d33.5939996!4d130.4111971!16s%2Fg%2F11c4q4wh9p?authuser=0&entry=ttu&g_ep=EgoyMDI2MDIyNC4wIKXMDSoASAFQAw%3D%3D' }
+              ]
+            }
+          ]
+        };
+
+        // --- Context ---
+        const AppContext = createContext();
+
+        const AppProvider = ({ children }) => {
+          const [data, setData] = useState(INITIAL_DATA);
+          const [currentView, setCurrentView] = useState('dashboard');
+          const [activeTripId, setActiveTripId] = useState(null);
+          const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+          const [fullScreenImage, setFullScreenImage] = useState(null);
+
+          useEffect(() => {
+            const saved = localStorage.getItem('qi_pig_travel_data');
+            if (saved) {
+              try {
+                const parsed = JSON.parse(saved);
+                if (!parsed.appName) parsed.appName = "Chai Chu 旅行記錄";
+                if (!parsed.themeColor) parsed.themeColor = "#FFB7C5";
+                if (!parsed.settings) parsed.settings = { fontSize: 16, darkMode: false };
+                if (typeof parsed.settings.fontSize === 'string') {
+                     if (parsed.settings.fontSize === 'small') parsed.settings.fontSize = 14;
+                     else if (parsed.settings.fontSize === 'large') parsed.settings.fontSize = 18;
+                     else parsed.settings.fontSize = 16;
+                }
+                setData(parsed);
+              } catch (e) {
+                console.error("Failed to parse data", e);
+              }
+            }
+          }, []);
+
+          useEffect(() => {
+            localStorage.setItem('qi_pig_travel_data', JSON.stringify(data));
+            const root = document.documentElement;
+            root.style.setProperty('--primary', data.themeColor);
+            root.style.setProperty('--primary-rgb', hexToRgb(data.themeColor));
+            
+            if (data.settings?.darkMode) document.documentElement.classList.add('dark');
+            else document.documentElement.classList.remove('dark');
+
+            const fontSize = data.settings?.fontSize || 16;
+            document.documentElement.style.fontSize = `${fontSize}px`;
+          }, [data]);
+
+          const activeTrip = useMemo(() => data.trips.find(t => t.id === activeTripId), [data, activeTripId]);
+
+          const addTrip = (trip) => setData(prev => ({ ...prev, trips: [...prev.trips, trip] }));
+          
+          const deleteTrip = (id) => {
+            setData(prev => ({ ...prev, trips: prev.trips.filter(t => t.id !== id) }));
+            if (activeTripId === id) setActiveTripId(null);
+          };
+
+          const updateAppName = (newName) => setData(prev => ({ ...prev, appName: newName }));
+          const updateThemeColor = (newColor) => setData(prev => ({ ...prev, themeColor: newColor }));
+          const updateSettings = (key, value) => setData(prev => ({ ...prev, settings: { ...prev.settings, [key]: value } }));
+
+          const updateTrip = (tripId, updatedFields) => {
+            setData(prev => {
+              return {
+                ...prev,
+                trips: prev.trips.map(t => {
+                  if (t.id !== tripId) return t;
+                  
+                  if (updatedFields.startDate && updatedFields.endDate) {
+                    const start = parseDateUTC(updatedFields.startDate);
+                    const end = parseDateUTC(updatedFields.endDate);
+                    const diffTime = Math.abs(end - start);
+                    const newDaysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                    
+                    const newItinerary = Array.from({ length: newDaysCount }, (_, i) => {
+                      const currentDayDate = new Date(start);
+                      currentDayDate.setUTCDate(start.getUTCDate() + i);
+                      const currentItineraryDate = currentDayDate.toISOString().split('T')[0];
+                      
+                      const existingDay = t.dailyItinerary[i];
+                      if (existingDay) return { ...existingDay, day: i + 1, date: currentItineraryDate };
+                      return {
+                        day: i + 1,
+                        date: currentItineraryDate,
+                        weather: ['sun', 'cloud-sun', 'cloud'][Math.floor(Math.random() * 3)],
+                        temp: '15°C / 22°C',
+                        activities: []
+                      };
+                    });
+                    return { ...t, ...updatedFields, dailyItinerary: newItinerary };
+                  }
+                  return { ...t, ...updatedFields };
+                })
+              };
+            });
+          };
+
+          const updateItinerary = (tripId, newItinerary) => setData(prev => ({ ...prev, trips: prev.trips.map(t => t.id === tripId ? { ...t, dailyItinerary: newItinerary } : t) }));
+          const updateChecklist = (tripId, newChecklist) => setData(prev => ({ ...prev, trips: prev.trips.map(t => t.id === tripId ? { ...t, checklist: newChecklist } : t) }));
+          const updateTripArray = (tripId, key, newArray) => setData(prev => ({ ...prev, trips: prev.trips.map(t => t.id === tripId ? { ...t, [key]: newArray } : t) }));
+
+          return (
+            <AppContext.Provider value={{ 
+              data, setData, currentView, setCurrentView, activeTripId, setActiveTripId, activeTrip,
+              addTrip, deleteTrip, updateTrip, updateAppName, updateThemeColor, updateSettings, updateItinerary, updateChecklist, updateTripArray,
+              isMobileMenuOpen, setIsMobileMenuOpen, fullScreenImage, setFullScreenImage
+            }}>
+              {children}
+            </AppContext.Provider>
+          );
+        };
+
+        // --- Helper Components ---
+
+        const MobileDragHint = () => (
+            <div className="md:hidden flex items-center justify-center gap-1.5 text-xs text-[var(--primary)] bg-[rgba(var(--primary-rgb),0.1)] px-3 py-2 rounded-xl w-max mb-4 font-bold border border-[rgba(var(--primary-rgb),0.2)] shadow-sm">
+                <ArrowRightLeft size={14} className="transform rotate-90" /> 手機版請點擊上下箭頭快速排序
+            </div>
+        );
+
+        const ImageLightbox = () => {
+          const { fullScreenImage, setFullScreenImage } = useContext(AppContext);
+          if (!fullScreenImage) return null;
+          return (
+            <div 
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" 
+              onClick={() => setFullScreenImage(null)}
+            >
+              <button 
+                className="absolute top-6 right-6 text-white/70 hover:text-white bg-black/50 hover:bg-black p-2 rounded-full transition-all z-10" 
+                onClick={(e) => { e.stopPropagation(); setFullScreenImage(null); }}
+              >
+                <X size={24}/>
+              </button>
+              <img 
+                src={fullScreenImage} 
+                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-200" 
+                onClick={e => e.stopPropagation()} 
+                alt="Full screen preview" 
+              />
+            </div>
+          );
+        }
+
+        const WeatherIcon = ({ type, className }) => {
+          switch(type) {
+            case 'sun': return <Sun className={`text-[var(--primary)] ${className}`} />; 
+            case 'cloud-sun': return <CloudSun className={`text-[#FFD93D] ${className}`} />; 
+            case 'rain': return <CloudRain className={`text-blue-400 ${className}`} />; 
+            case 'snow': return <Snowflake className={`text-cyan-300 ${className}`} />;
+            default: return <CloudSun className={`text-gray-400 ${className}`} />;
+          }
+        };
+
+        const GlassCard = ({ children, className = '', onClick }) => (
+          <div onClick={onClick} className={`bg-[#FFFFFF] dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm rounded-3xl transition-all duration-300 hover:shadow-md hover:border-[var(--primary)]/50 ${className}`}>
+            {children}
+          </div>
+        );
+
+        const Button = ({ children, variant = 'primary', className = '', onClick, ...props }) => {
+          const styles = {
+            primary: "bg-[var(--primary)] text-white hover:brightness-90 shadow-sm shadow-[var(--primary)]/30", 
+            outline: "border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-[rgba(var(--primary-rgb),0.1)] hover:border-[var(--primary)] bg-white dark:bg-gray-800",
+            ghost: "text-gray-600 dark:text-gray-300 hover:bg-[rgba(var(--primary-rgb),0.1)] hover:text-[var(--primary)]",
+            danger: "text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40"
+          };
+          return (
+            <button className={`px-4 py-2 rounded-2xl font-medium transition-all duration-200 flex items-center gap-2 text-sm ${styles[variant]} ${className}`} onClick={onClick} {...props}>
+              {children}
+            </button>
+          );
+        };
+
+        // --- Navigation Components ---
+        const Header = () => {
+          const { data, setActiveTripId, setCurrentView } = useContext(AppContext);
+          
+          const goHome = () => {
+            setActiveTripId(null);
+            setCurrentView('dashboard');
+          };
+
+          return (
+            <header className="h-16 bg-[#FFFFFF]/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 sticky top-0 z-50 px-4 md:px-8 flex items-center justify-between transition-colors duration-300">
+              <div className="flex items-center gap-3 cursor-pointer group" onClick={goHome}>
+                <div className="w-9 h-9 bg-gradient-to-tr from-[var(--primary)] to-orange-300 rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
+                  C
+                </div>
+                <h1 className="font-bold text-lg tracking-tight text-[#2D3436] dark:text-white hidden md:block">
+                  {data.appName}
+                </h1>
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400">已同步</span>
+                </div>
+                <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 border-2 border-white dark:border-gray-700 shadow-sm overflow-hidden cursor-pointer hover:border-[var(--primary)] transition-colors">
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <User size={20} />
+                    </div>
+                </div>
+              </div>
+            </header>
+          );
+        };
+
+        const BottomNav = () => {
+          const { currentView, setCurrentView } = useContext(AppContext);
+
+          const navItems = [
+            { id: 'trip-detail', label: '行程', icon: Calendar },
+            { id: 'food', label: '美食', icon: Utensils },
+            { id: 'reservations', label: '預約', icon: Ticket },
+            { id: 'budget', label: '記錄', icon: JapaneseYen },
+            { id: 'shopping', label: '購物', icon: ShoppingBag },
+            { id: 'preparation', label: '準備', icon: ClipboardList },
+            { id: 'settings', label: '設置', icon: Settings },
+          ];
+
+          return (
+            <nav className="fixed bottom-0 left-0 right-0 bg-[#FFFFFF] dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 z-40 pb-safe md:sticky md:bottom-auto md:top-16 md:border-b md:border-t-0 md:bg-[#FFFFFF]/95 md:dark:bg-gray-900/95 md:backdrop-blur">
+              <div className="flex justify-around items-center md:justify-center md:gap-8 p-2 md:p-3 overflow-x-auto no-scrollbar">
+                {navItems.map(item => {
+                    const isActive = currentView === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setCurrentView(item.id)}
+                        className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 p-2 md:px-4 md:py-2 rounded-2xl transition-all duration-200 min-w-[60px] md:min-w-0
+                            ${isActive 
+                                ? 'text-[var(--primary)] bg-[rgba(var(--primary-rgb),0.1)]' 
+                                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                            }`}
+                      >
+                        <item.icon size={20} className={isActive ? 'fill-current opacity-20 stroke-[2.5px]' : 'stroke-2'} />
+                        <span className={`text-[10px] md:text-xs font-medium ${isActive ? 'font-bold' : ''}`}>{item.label}</span>
+                      </button>
+                    );
+                })}
+              </div>
+            </nav>
+          );
+        };
+
+        // --- Feature Components ---
+
+        const EditTripModal = ({ trip, onClose, onSave }) => {
+          const [previewImage, setPreviewImage] = useState(trip.coverImage);
+          const [isProcessing, setIsProcessing] = useState(false);
+          const fileInputRef = useRef(null);
+
+          const handleImageChange = async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+              setIsProcessing(true);
+              try {
+                const base64 = await processImageUpload(file);
+                setPreviewImage(base64);
+              } catch (err) {
+                console.error("Image processing failed", err);
+                alert("圖片處理失敗，請試著使用較小的圖片");
+              } finally {
+                setIsProcessing(false);
+              }
+            }
+          };
+
+          const handleSubmit = (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            onSave({
+              title: formData.get('title'),
+              startDate: formData.get('startDate'),
+              endDate: formData.get('endDate'),
+              coverImage: previewImage 
+            });
+          };
+
+          return (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm" onClick={onClose}>
+              <div className="bg-[#FFFFFF] dark:bg-gray-800 rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-bold text-[#2D3436] dark:text-white">編輯旅程</h3>
+                  <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={20}/></button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">封面圖片</label>
+                    <div 
+                      className="relative w-full h-40 rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-700 group cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-[var(--primary)] transition-colors"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <img 
+                        src={previewImage} 
+                        alt="Cover Preview" 
+                        className="w-full h-full object-cover opacity-80 group-hover:opacity-60 transition-opacity"
+                        onError={(e) => e.target.src = 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&q=80&w=1000'}
+                      />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-white drop-shadow-md">
+                        {isProcessing ? (
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                        ) : (
+                          <>
+                            <div className="bg-black/30 p-2 rounded-full mb-1 backdrop-blur-sm group-hover:bg-[var(--primary)] transition-colors">
+                              <Upload size={20} />
+                            </div>
+                            <span className="text-xs font-bold shadow-sm">點擊上傳照片</span>
+                          </>
+                        )}
+                      </div>
+                      <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">旅程名稱</label>
+                    <input name="title" defaultValue={trip.title} required className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 focus:ring-2 focus:ring-[var(--primary)] outline-none" />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">開始日期</label>
+                      <input type="date" name="startDate" defaultValue={trip.startDate} required className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">結束日期</label>
+                      <input type="date" name="endDate" defaultValue={trip.endDate} required className="w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <Button variant="outline" type="button" className="flex-1 justify-center" onClick={onClose}>取消</Button>
+                    <Button type="submit" className="flex-1 justify-center" disabled={isProcessing}>{isProcessing ? '處理中...' : '儲存修改'}</Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          );
+        };
+
+        const BoardingPass = ({ res, onDelete, onEdit, setFullScreenImage, onMoveUp, onMoveDown, isFirst, isLast, ...draggableProps }) => {
+          const parseDetail = (detail) => {
+            try {
+              const regex = /([A-Z0-9]+)\s+(\d{2}:\d{2})\s+([A-Z]{3})\s*->\s*(\d{2}:\d{2})\s+([A-Z]{3})/;
+              const match = detail.match(regex);
+              if (match) {
+                return { flight: match[1], depTime: match[2], origin: match[3], arrTime: match[4], dest: match[5] };
+              }
+            } catch (e) {}
+            return { flight: res.title, depTime: '--:--', origin: '---', arrTime: '--:--', dest: '---' };
+          };
+
+          const info = parseDetail(res.detail || "");
+          const isParsed = info.origin !== '---';
+
+          const getCityName = (code) => {
+            const map = { 'HKG': '香港', 'TPE': '台北', 'KIX': '大阪', 'NRT': '東京', 'HND': '東京', 'FUK': '福岡' };
+            return map[code] || code;
+          };
+
+          return (
+            <div 
+              className="rounded-3xl overflow-hidden shadow-lg mb-4 transform transition-all hover:scale-[1.01] hover:shadow-xl relative group cursor-pointer"
+              onClick={() => res.link ? window.open(res.link, '_blank') : onEdit(res)}
+              {...draggableProps}
+            >
+                <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                     <button onClick={(e) => {e.stopPropagation(); onEdit(res)}} className="p-2 bg-white/20 backdrop-blur rounded-full text-white hover:bg-white/40"><Pencil size={14}/></button>
+                     <button onClick={(e) => {e.stopPropagation(); onDelete(res.id)}} className="p-2 bg-white/20 backdrop-blur rounded-full text-white hover:bg-red-500/80"><Trash2 size={14}/></button>
+                </div>
+                
+                {/* Drag Handle & Mobile Arrows */}
+                <div className="absolute top-1/2 left-2 transform -translate-y-1/2 z-10 flex flex-col items-center md:opacity-0 group-hover:opacity-100 transition-opacity text-white/80" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+                    <button onClick={(e) => {e.stopPropagation(); onMoveUp();}} disabled={isFirst} className="p-1 hover:text-white md:hidden disabled:opacity-30 disabled:hover:text-white/80"><ChevronUp size={22}/></button>
+                    <GripVertical size={24} className="hidden md:block cursor-move hover:text-white" />
+                    <button onClick={(e) => {e.stopPropagation(); onMoveDown();}} disabled={isLast} className="p-1 hover:text-white md:hidden disabled:opacity-30 disabled:hover:text-white/80"><ChevronDown size={22}/></button>
+                </div>
+
+                <div className="p-6 pl-10 relative text-white" style={{ background: `var(--primary)`, filter: 'brightness(0.9) saturate(1.1)' }}>
+                    <div className="flex justify-between items-start mb-6">
+                        <div className="flex flex-col">
+                            <span className="text-xs font-bold tracking-widest opacity-80 mb-1">BOARDING PASS</span>
+                            {isParsed ? (
+                                <span className="text-lg font-bold">{getCityName(info.origin)} <span className="mx-1">→</span> {getCityName(info.dest)}</span>
+                            ) : (
+                                <span className="text-lg font-bold">{res.title}</span>
+                            )}
+                        </div>
+                        <MoreVertical size={20} className="opacity-60" />
+                    </div>
+
+                    <div className="flex justify-between items-center mb-2">
+                        <div className="text-center">
+                            <div className="text-4xl font-black mb-1">{info.origin}</div>
+                            <div className="text-xs opacity-80 mb-1">出發</div>
+                            <div className="text-xl font-bold">{info.depTime}</div>
+                        </div>
+
+                        <div className="flex flex-col items-center flex-1 px-4">
+                            <Plane size={24} className="transform rotate-90 mb-2 opacity-90" />
+                            <div className="w-full h-0.5 bg-white/30 relative">
+                                <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                        </div>
+
+                        <div className="text-center">
+                            <div className="text-4xl font-black mb-1">{info.dest}</div>
+                            <div className="text-xs opacity-80 mb-1">抵達</div>
+                            <div className="text-xl font-bold">{info.arrTime}</div>
+                        </div>
+                    </div>
+                    
+                    <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+                    <div className="absolute top-10 left-1/3 w-10 h-10 bg-white/20 rounded-full blur-xl"></div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 p-4 relative">
+                    <div className="absolute -top-2 left-0 right-0 h-4 flex justify-between px-1">
+                         {Array.from({length: 20}).map((_, i) => <div key={i} className="w-3 h-3 bg-[#F8F9FA] dark:bg-gray-950 rounded-full -mt-2"></div>)}
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2 pl-6">
+                        <div>
+                            <div className="text-xs text-gray-400 mb-0.5">航班編號</div>
+                            <div className="font-bold text-gray-700 dark:text-gray-200">{info.flight}</div>
+                        </div>
+                        <div className="text-right flex items-center gap-3">
+                            <div>
+                                <div className="text-xs text-gray-400 mb-0.5">日期</div>
+                                <div className="font-bold text-gray-700 dark:text-gray-200">{res.date || "未設定"}</div>
+                            </div>
+                            {res.attachment && (
+                                <button 
+                                    className="p-2 bg-gray-100 hover:bg-[rgba(var(--primary-rgb),0.1)] dark:bg-gray-700 rounded-lg text-[var(--primary)] transition-colors"
+                                    onClick={(e) => { e.stopPropagation(); setFullScreenImage(res.attachment); }}
+                                    title="查看機票憑證"
+                                >
+                                    <Paperclip size={16}/>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+          );
+        };
+
+        const Reservations = () => {
+          const { activeTrip, updateTripArray, setFullScreenImage } = useContext(AppContext);
+          const [showModal, setShowModal] = useState(false);
+          const [editingItem, setEditingItem] = useState(null);
+          const [modalType, setModalType] = useState('flight'); 
+          const [draggedItem, setDraggedItem] = useState(null);
+          const [previewImage, setPreviewImage] = useState('');
+          const [copiedId, setCopiedId] = useState(null);
+          const fileInputRef = useRef(null);
+
+          const flightRef = useRef(null);
+          const hotelRef = useRef(null);
+          const carRef = useRef(null);
+          const ticketRef = useRef(null);
+
+          const reservations = activeTrip.reservations || [];
+          const flights = reservations.filter(r => r.type === 'flight');
+          const hotels = reservations.filter(r => r.type === 'hotel');
+          const cars = reservations.filter(r => r.type === 'car');
+          const tickets = reservations.filter(r => r.type === 'ticket');
+
+          const scrollTo = (ref) => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+          const handleImageChange = async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+              try {
+                const base64 = await processImageUpload(file);
+                setPreviewImage(base64);
+              } catch (err) {
+                console.error("Image processing failed", err);
+                alert("圖片上傳失敗");
+              }
+            }
+          };
+
+          const handleSaveRes = (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            const item = {
+                id: editingItem ? editingItem.id : crypto.randomUUID(),
+                type: modalType,
+                title: fd.get('title'),
+                detail: fd.get('detail'),
+                date: fd.get('date'),
+                link: fd.get('link'),
+                address: fd.get('address'),
+                attachment: previewImage,
+                confirmed: true
+            };
+            const newReservations = editingItem 
+              ? reservations.map(r => r.id === editingItem.id ? item : r) 
+              : [...reservations, item];
+            updateTripArray(activeTrip.id, 'reservations', newReservations);
+            closeModal();
+          };
+
+          const handleCopy = (e, id, text) => {
+              e.stopPropagation();
+              const textArea = document.createElement("textarea");
+              textArea.value = text;
+              document.body.appendChild(textArea);
+              textArea.select();
+              try {
+                  document.execCommand('copy');
+                  setCopiedId(id);
+                  setTimeout(() => setCopiedId(null), 2000);
+              } catch (err) {
+                  console.error('複製失敗', err);
+              }
+              document.body.removeChild(textArea);
+          };
+
+          const deleteRes = (id) => {
+              if(confirm("確定刪除此預約？")) {
+                  updateTripArray(activeTrip.id, 'reservations', reservations.filter(r => r.id !== id));
+              }
+          };
+
+          const handleDragStart = (e, index, type) => {
+              setDraggedItem({ index, type });
+              e.dataTransfer.effectAllowed = "move";
+          };
+
+          const handleDragOver = (e, index, type) => {
+              e.preventDefault();
+              if (!draggedItem || draggedItem.index === index || draggedItem.type !== type) return;
+              
+              const currentTypeItems = reservations.filter(r => r.type === type);
+              const otherItems = reservations.filter(r => r.type !== type);
+
+              const newTypeItems = [...currentTypeItems];
+              const item = newTypeItems[draggedItem.index];
+              newTypeItems.splice(draggedItem.index, 1);
+              newTypeItems.splice(index, 0, item);
+              
+              updateTripArray(activeTrip.id, 'reservations', [...otherItems, ...newTypeItems]);
+              setDraggedItem({ ...draggedItem, index });
+          };
+
+          const handleDragEnd = () => {
+              setDraggedItem(null);
+          };
+
+          const moveRes = (index, type, direction) => {
+              const currentTypeItems = reservations.filter(r => r.type === type);
+              if (direction === 'up' && index === 0) return;
+              if (direction === 'down' && index === currentTypeItems.length - 1) return;
+              
+              const otherItems = reservations.filter(r => r.type !== type);
+              const newTypeItems = [...currentTypeItems];
+              const swapIndex = direction === 'up' ? index - 1 : index + 1;
+              [newTypeItems[index], newTypeItems[swapIndex]] = [newTypeItems[swapIndex], newTypeItems[index]];
+              
+              updateTripArray(activeTrip.id, 'reservations', [...otherItems, ...newTypeItems]);
+          };
+
+          const openAddModal = (type) => { 
+            setEditingItem(null); 
+            setModalType(type); 
+            setPreviewImage('');
+            setShowModal(true); 
+          };
+          
+          const openEditModal = (item) => { 
+            setEditingItem(item); 
+            setModalType(item.type); 
+            setPreviewImage(item.attachment || '');
+            setShowModal(true); 
+          };
+          
+          const closeModal = () => { 
+            setShowModal(false); 
+            setEditingItem(null); 
+            setPreviewImage('');
+          };
+
+          const renderGenericCard = (res, index, type, Icon, colorClass, bgClass, arrLength) => (
+            <div 
+              key={res.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, index, type)}
+              onDragOver={(e) => handleDragOver(e, index, type)}
+              onDragEnd={handleDragEnd}
+              className={`transition-all duration-300 ${draggedItem?.index === index && draggedItem?.type === type ? 'opacity-50 scale-95' : ''}`}
+            >
+              <GlassCard className="p-0 flex flex-row overflow-hidden group cursor-pointer border-none shadow-md hover:shadow-xl transition-all" onClick={() => res.link ? window.open(res.link, '_blank') : openEditModal(res)}>
+                  <div className="w-8 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-400 shrink-0" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+                      <button onClick={() => moveRes(index, type, 'up')} disabled={index === 0} className="p-1 hover:text-[var(--primary)] md:hidden disabled:opacity-30 disabled:hover:text-gray-400"><ChevronUp size={18}/></button>
+                      <GripVertical size={16} className="hidden md:block cursor-move hover:text-gray-600 hover:bg-gray-200 w-full py-2 h-full" />
+                      <button onClick={() => moveRes(index, type, 'down')} disabled={index === arrLength - 1} className="p-1 hover:text-[var(--primary)] md:hidden disabled:opacity-30 disabled:hover:text-gray-400"><ChevronDown size={18}/></button>
+                  </div>
+                  <div 
+                    className={`w-24 relative flex items-center justify-center ${bgClass} ${res.attachment ? 'cursor-zoom-in group/img' : ''}`}
+                    onClick={(e) => { 
+                        if (res.attachment) { 
+                            e.stopPropagation(); 
+                            setFullScreenImage(res.attachment); 
+                        } 
+                    }}
+                  >
+                     {res.attachment ? (
+                         <>
+                            <img src={res.attachment} className="w-full h-full object-cover" alt="attachment" />
+                            <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center">
+                                <span className="opacity-0 group-hover/img:opacity-100 text-white bg-black/50 px-2 py-1 rounded-lg text-[10px]">放大</span>
+                            </div>
+                         </>
+                     ) : (
+                         <Icon size={32} className={colorClass} />
+                     )}
+                  </div>
+                  <div className="p-4 flex-1 flex flex-col justify-center min-w-0">
+                      <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-gray-800 dark:text-gray-100 text-lg truncate">{res.title}</h4>
+                          {res.link && <MapPin size={14} className="text-[var(--primary)] shrink-0" />}
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1 truncate"><Calendar size={12} className="shrink-0"/> <span className="truncate">{res.detail}</span></p>
+                      {res.address && (
+                          <div className="mt-2 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded-lg border border-gray-100 dark:border-gray-700">
+                              <MapPin size={12} className="shrink-0 text-gray-400" />
+                              <span 
+                                  className={`truncate flex-1 font-medium ${res.link ? 'cursor-pointer hover:text-[var(--primary)] underline decoration-dashed underline-offset-2 transition-colors' : ''}`}
+                                  onClick={(e) => {
+                                      if (res.link) {
+                                          e.stopPropagation();
+                                          window.open(res.link, '_blank');
+                                      }
+                                  }}
+                                  title={res.link ? "在 Google Maps 中開啟" : ""}
+                              >
+                                  {res.address}
+                              </span>
+                              <button 
+                                  onClick={(e) => handleCopy(e, res.id, res.address)}
+                                  className="ml-1 px-2 py-1 bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-md shadow-sm border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 transition-colors flex items-center gap-1 shrink-0"
+                                  title="複製地址"
+                              >
+                                  {copiedId === res.id ? (
+                                      <><Check size={12} className="text-green-500" /><span className="text-green-500">已複製</span></>
+                                  ) : (
+                                      <><Copy size={12} /><span>複製</span></>
+                                  )}
+                              </button>
+                          </div>
+                      )}
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center justify-center px-2 sm:px-4 border-l border-gray-100 dark:border-gray-700 gap-1 sm:gap-2 shrink-0">
+                      <button onClick={(e) => {e.stopPropagation(); openEditModal(res)}} className="p-2 text-gray-300 hover:text-[var(--primary)] hover:bg-[rgba(var(--primary-rgb),0.1)] rounded-full transition-all"><Pencil size={16}/></button>
+                      <button onClick={(e) => {e.stopPropagation(); deleteRes(res.id)}} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"><Trash2 size={16}/></button>
+                  </div>
+              </GlassCard>
+            </div>
+          );
+
+          return (
+            <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-8 pb-32 bg-[#FAF8F5] dark:bg-gray-950 min-h-screen">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                    <h2 className="text-3xl font-black text-gray-800 dark:text-white tracking-tight">預約管理</h2>
+                    <p className="text-gray-500 text-sm mt-1 font-medium">機票、住宿、租車與票券</p>
+                </div>
+                <div className="flex items-center gap-2">
+                     <Button onClick={() => openAddModal('flight')} className="rounded-full px-4 bg-[var(--primary)] hover:brightness-90 shadow-[var(--primary)]/30 text-white font-bold border-none">
+                        <Plus size={18} /> <span className="ml-1">新增</span>
+                     </Button>
+                </div>
+              </div>
+
+              <MobileDragHint />
+
+              <div className="flex gap-3 mb-8 overflow-x-auto no-scrollbar pb-2">
+                  <button onClick={() => scrollTo(flightRef)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-[rgba(var(--primary-rgb),0.1)] text-[var(--primary)] font-bold text-sm shadow-sm border border-[rgba(var(--primary-rgb),0.2)] whitespace-nowrap">
+                     <Plane size={14} className="fill-current"/> 機票 <span className="bg-white text-[var(--primary)] px-1.5 py-0.5 rounded-full text-xs ml-1">{flights.length}</span>
+                  </button>
+                  <button onClick={() => scrollTo(hotelRef)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-gray-500 font-medium text-sm border border-gray-200 hover:bg-gray-50 transition-colors whitespace-nowrap">
+                     <Hotel size={14}/> 住宿 <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full text-xs ml-1">{hotels.length}</span>
+                  </button>
+                  <button onClick={() => scrollTo(carRef)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-gray-500 font-medium text-sm border border-gray-200 hover:bg-gray-50 transition-colors whitespace-nowrap">
+                     <Car size={14}/> 租車 <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full text-xs ml-1">{cars.length}</span>
+                  </button>
+                  <button onClick={() => scrollTo(ticketRef)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-gray-500 font-medium text-sm border border-gray-200 hover:bg-gray-50 transition-colors whitespace-nowrap">
+                     <Ticket size={14}/> 票券 <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full text-xs ml-1">{tickets.length}</span>
+                  </button>
+              </div>
+
+              <section ref={flightRef} className="scroll-mt-28 mb-12">
+                  <div className="grid gap-6">
+                      {flights.map((res, index) => (
+                          <BoardingPass 
+                            key={res.id} 
+                            res={res} 
+                            onDelete={deleteRes} 
+                            onEdit={openEditModal} 
+                            setFullScreenImage={setFullScreenImage}
+                            onMoveUp={() => moveRes(index, 'flight', 'up')}
+                            onMoveDown={() => moveRes(index, 'flight', 'down')}
+                            isFirst={index === 0}
+                            isLast={index === flights.length - 1}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, index, 'flight')}
+                            onDragOver={(e) => handleDragOver(e, index, 'flight')}
+                            onDragEnd={handleDragEnd}
+                          />
+                      ))}
+                      {flights.length === 0 && <div className="text-center text-gray-400 py-10 border-2 border-dashed border-[rgba(var(--primary-rgb),0.2)] rounded-3xl bg-[rgba(var(--primary-rgb),0.05)]">尚無機票資訊</div>}
+                  </div>
+              </section>
+
+              <section ref={hotelRef} className="scroll-mt-28 mb-12">
+                  <div className="flex items-center gap-2 mb-4">
+                      <div className="p-2 bg-[rgba(var(--primary-rgb),0.1)] rounded-lg text-[var(--primary)]"><Hotel size={20}/></div>
+                      <h3 className="text-xl font-bold text-gray-700 dark:text-gray-200">住宿</h3>
+                  </div>
+                  <div className="grid gap-4">
+                      {hotels.map((res, index) => renderGenericCard(res, index, 'hotel', Hotel, 'text-purple-500', 'bg-purple-100 dark:bg-purple-900/20', hotels.length))}
+                      {hotels.length === 0 && <div className="text-center text-gray-400 py-6 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl text-sm">尚無住宿資訊</div>}
+                  </div>
+              </section>
+
+              <section ref={carRef} className="scroll-mt-28 mb-12">
+                  <div className="flex items-center gap-2 mb-4">
+                      <div className="p-2 bg-[rgba(var(--primary-rgb),0.1)] rounded-lg text-[var(--primary)]"><Car size={20}/></div>
+                      <h3 className="text-xl font-bold text-gray-700 dark:text-gray-200">租車</h3>
+                  </div>
+                  <div className="grid gap-4">
+                      {cars.map((res, index) => renderGenericCard(res, index, 'car', Car, 'text-emerald-500', 'bg-emerald-100 dark:bg-emerald-900/20', cars.length))}
+                      {cars.length === 0 && <div className="text-center text-gray-400 py-6 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl text-sm">尚無租車資訊</div>}
+                  </div>
+              </section>
+
+              <section ref={ticketRef} className="scroll-mt-28">
+                  <div className="flex items-center gap-2 mb-4">
+                      <div className="p-2 bg-[rgba(var(--primary-rgb),0.1)] rounded-lg text-[var(--primary)]"><Ticket size={20}/></div>
+                      <h3 className="text-xl font-bold text-gray-700 dark:text-gray-200">票券</h3>
+                  </div>
+                  <div className="grid gap-4">
+                      {tickets.map((res, index) => renderGenericCard(res, index, 'ticket', Ticket, 'text-blue-500', 'bg-blue-100 dark:bg-blue-900/20', tickets.length))}
+                      {tickets.length === 0 && <div className="text-center text-gray-400 py-6 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl text-sm">尚無票券資訊</div>}
+                  </div>
+              </section>
+
+              {showModal && (
+                  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={closeModal}>
+                      <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                          <div className="flex justify-between items-center mb-4">
+                              <h3 className="text-lg font-bold dark:text-white">{editingItem ? '編輯預約' : '新增預約'}</h3>
+                              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+                          </div>
+                          <form onSubmit={handleSaveRes} className="space-y-4">
+                              <div className="grid grid-cols-4 gap-2 mb-2">
+                                  <button type="button" onClick={() => setModalType('flight')} className={`py-2 rounded-lg text-xs font-bold transition-colors ${modalType === 'flight' ? 'bg-[var(--primary)] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}>機票</button>
+                                  <button type="button" onClick={() => setModalType('hotel')} className={`py-2 rounded-lg text-xs font-bold transition-colors ${modalType === 'hotel' ? 'bg-purple-500 text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}>住宿</button>
+                                  <button type="button" onClick={() => setModalType('car')} className={`py-2 rounded-lg text-xs font-bold transition-colors ${modalType === 'car' ? 'bg-emerald-500 text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}>租車</button>
+                                  <button type="button" onClick={() => setModalType('ticket')} className={`py-2 rounded-lg text-xs font-bold transition-colors ${modalType === 'ticket' ? 'bg-blue-500 text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}>票券</button>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">標題</label>
+                                  <input name="title" defaultValue={editingItem?.title} placeholder={modalType === 'flight' ? "例如: 去程機票" : modalType === 'car' ? "例如: Toyota Rent-A-Car" : "例如: 預約項目名稱"} required className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">
+                                    詳情 
+                                    {modalType === 'flight' && <span className="text-[10px] text-[var(--primary)] ml-1">(格式: 航班 時間 機場 &rarr; 時間 機場)</span>}
+                                    {modalType === 'car' && <span className="text-[10px] text-gray-400 ml-1">(取還車地點、車型)</span>}
+                                  </label>
+                                  <textarea name="detail" defaultValue={editingItem?.detail} rows="2" placeholder="填寫詳細資訊..." required className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)] resize-none"></textarea>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-500 mb-1">日期</label>
+                                  <input type="date" name="date" defaultValue={editingItem?.date} className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">地圖連結 (選填)</label>
+                                  <input type="url" name="link" defaultValue={editingItem?.link} placeholder="https://..." className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                          </div>
+                          
+                          {modalType !== 'flight' && (
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">地址 (選填)</label>
+                                  <input name="address" defaultValue={editingItem?.address} placeholder="例如: 福岡縣福岡市博多區..." className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                          )}
+                          
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">附件 (圖片/憑證)</label>
+                                  <div 
+                                      className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-200 dark:border-gray-600 hover:border-[var(--primary)] cursor-pointer transition-colors flex flex-col items-center justify-center text-gray-400 hover:text-[var(--primary)]"
+                                      onClick={() => fileInputRef.current?.click()}
+                                  >
+                                      {previewImage ? (
+                                          <>
+                                              <img src={previewImage} className="w-full h-full object-cover" alt="preview" />
+                                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity"><Upload size={20}/></div>
+                                          </>
+                                      ) : (
+                                          <>
+                                              <ImageIcon size={24} className="mb-2"/>
+                                              <span className="text-xs">點擊上傳憑證照片</span>
+                                          </>
+                                      )}
+                                      <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
+                                  </div>
+                              </div>
+
+                              <div className="flex gap-3 mt-6">
+                                  <Button variant="outline" type="button" className="flex-1 justify-center" onClick={closeModal}>取消</Button>
+                                  <Button type="submit" className="flex-1 justify-center bg-[var(--primary)] hover:brightness-90 text-white shadow-none">儲存</Button>
+                              </div>
+                          </form>
+                      </div>
+                  </div>
+              )}
+            </div>
+          );
+        };
+
+        const ShoppingList = () => {
+            const { activeTrip, updateTripArray, setFullScreenImage } = useContext(AppContext);
+            const [newItem, setNewItem] = useState('');
+            const [draggedItem, setDraggedItem] = useState(null);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [previewImage, setPreviewImage] = useState('');
+            const fileInputRef = useRef(null);
+            
+            const list = activeTrip.shoppingList || [];
+
+            const handleOpenModal = (item = null) => {
+                setEditingItem(item);
+                setPreviewImage(item?.image || '');
+                setIsModalOpen(true);
+            };
+
+            const handleCloseModal = () => {
+                setIsModalOpen(false);
+                setEditingItem(null);
+                setPreviewImage('');
+            };
+
+            const handleSaveItem = (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const itemData = {
+                    id: editingItem ? editingItem.id : crypto.randomUUID(),
+                    item: fd.get('item'),
+                    image: previewImage,
+                    notes: fd.get('notes'),
+                    completed: editingItem ? editingItem.completed : false
+                };
+
+                if (editingItem) {
+                    updateTripArray(activeTrip.id, 'shoppingList', list.map(i => i.id === editingItem.id ? itemData : i));
+                } else {
+                    updateTripArray(activeTrip.id, 'shoppingList', [...list, itemData]);
+                }
+                handleCloseModal();
+            };
+
+            const handleImageChange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const base64 = await processImageUpload(file);
+                        setPreviewImage(base64);
+                    } catch (err) {
+                        console.error("Image processing failed", err);
+                        alert("圖片上傳失敗");
+                    }
+                }
+            };
+
+            const addItem = (e) => { e.preventDefault(); if(!newItem.trim()) return; updateTripArray(activeTrip.id, 'shoppingList', [...list, { id: crypto.randomUUID(), item: newItem, completed: false }]); setNewItem(''); };
+            const toggleItem = (id) => { updateTripArray(activeTrip.id, 'shoppingList', list.map(i => i.id === id ? { ...i, completed: !i.completed } : i)); };
+            const deleteItem = (id) => { updateTripArray(activeTrip.id, 'shoppingList', list.filter(i => i.id !== id)); };
+
+            const handleDragStart = (e, index) => {
+                setDraggedItem(index);
+                e.dataTransfer.effectAllowed = "move";
+            };
+
+            const handleDragOver = (e, index) => {
+                e.preventDefault();
+                if (draggedItem === null || draggedItem === index) return;
+                
+                const newList = [...list];
+                const item = newList[draggedItem];
+                newList.splice(draggedItem, 1);
+                newList.splice(index, 0, item);
+                
+                setDraggedItem(index);
+                updateTripArray(activeTrip.id, 'shoppingList', newList);
+            };
+
+            const handleDragEnd = () => {
+                setDraggedItem(null);
+            };
+
+            const moveItem = (index, direction) => {
+                if (direction === 'up' && index === 0) return;
+                if (direction === 'down' && index === list.length - 1) return;
+                const newList = [...list];
+                const swapIndex = direction === 'up' ? index - 1 : index + 1;
+                [newList[index], newList[swapIndex]] = [newList[swapIndex], newList[index]];
+                updateTripArray(activeTrip.id, 'shoppingList', newList);
+            };
+
+            return (
+                <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6 pb-32">
+                    <div className="flex justify-between items-center mb-2">
+                        <h2 className="text-2xl font-bold text-[#2D3436] dark:text-white">購物清單</h2>
+                        <Button onClick={() => handleOpenModal()} className="rounded-full px-4"><Plus size={18}/> 新增</Button>
+                    </div>
+
+                    <MobileDragHint />
+                    
+                    <GlassCard className="p-6 min-h-[300px]">
+                        <form onSubmit={addItem} className="flex gap-2 mb-6">
+                            <input value={newItem} onChange={e => setNewItem(e.target.value)} placeholder="快速新增項目... (詳細資訊可點擊右側新增)" className="flex-1 bg-gray-50 dark:bg-gray-700 dark:text-white border border-gray-200 dark:border-gray-600 rounded-2xl px-4 py-2 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                            <Button type="submit"><Plus size={18}/></Button>
+                        </form>
+                        <div className="space-y-2">
+                            {list.map((item, index) => (
+                                <div 
+                                    key={item.id} 
+                                    draggable 
+                                    onDragStart={(e) => handleDragStart(e, index)}
+                                    onDragOver={(e) => handleDragOver(e, index)}
+                                    onDragEnd={handleDragEnd}
+                                    className={`flex items-start gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-2xl group cursor-pointer transition-all duration-300 border border-transparent hover:border-gray-200 dark:hover:border-gray-600 ${draggedItem === index ? 'opacity-50 scale-95' : 'opacity-100'}`} 
+                                    onClick={() => toggleItem(item.id)}
+                                >
+                                    <div className="flex flex-col items-center justify-center text-gray-300 shrink-0 mt-0.5" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+                                        <button onClick={() => moveItem(index, 'up')} disabled={index === 0} className="p-0.5 hover:text-[var(--primary)] md:hidden disabled:opacity-30 disabled:hover:text-gray-300"><ChevronUp size={18}/></button>
+                                        <GripVertical size={16} className="hidden md:block cursor-move hover:text-gray-500" />
+                                        <button onClick={() => moveItem(index, 'down')} disabled={index === list.length - 1} className="p-0.5 hover:text-[var(--primary)] md:hidden disabled:opacity-30 disabled:hover:text-gray-300"><ChevronDown size={18}/></button>
+                                    </div>
+                                    <div className={`mt-1.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${item.completed ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : 'border-gray-300 dark:border-gray-500'}`}>{item.completed && <Check size={12}/>}</div>
+                                    
+                                    {item.image && (
+                                        <div 
+                                          className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 shrink-0 border border-gray-200 cursor-zoom-in group/img relative mt-0.5"
+                                          onClick={(e) => { e.stopPropagation(); setFullScreenImage(item.image); }}
+                                        >
+                                            <img src={item.image} className="w-full h-full object-cover" alt="item" />
+                                            <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center">
+                                                <span className="opacity-0 group-hover/img:opacity-100 text-white text-[10px]">預覽</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex-1 min-w-0 pt-0.5">
+                                        <div className={`flex items-center gap-2 ${item.completed ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200 font-medium'}`}>
+                                            {item.item}
+                                        </div>
+                                        {item.notes && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{item.notes}</p>}
+                                    </div>
+
+                                    <div className="flex gap-1 pt-0.5" onClick={e => e.stopPropagation()}>
+                                        <button onClick={() => handleOpenModal(item)} className="p-1.5 text-gray-400 hover:text-[var(--primary)] hover:bg-[rgba(var(--primary-rgb),0.1)] rounded-lg transition-colors"><Pencil size={16}/></button>
+                                        <button onClick={() => deleteItem(item.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                            {list.length === 0 && <p className="text-center text-gray-400 mt-10">清單是空的，快去新增吧！</p>}
+                        </div>
+                    </GlassCard>
+
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm" onClick={handleCloseModal}>
+                            <div className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-bold dark:text-white">{editingItem ? '編輯商品' : '新增商品'}</h3>
+                                    <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+                                </div>
+                                <form onSubmit={handleSaveItem} className="space-y-4">
+                                    <div 
+                                        className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-200 dark:border-gray-600 hover:border-[var(--primary)] cursor-pointer transition-colors flex flex-col items-center justify-center text-gray-400 hover:text-[var(--primary)]"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        {previewImage ? (
+                                            <>
+                                                <img src={previewImage} className="w-full h-full object-cover" alt="preview" />
+                                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity"><Upload size={20}/></div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ImageIcon size={24} className="mb-2"/>
+                                                <span className="text-xs">點擊上傳圖片 (選填)</span>
+                                            </>
+                                        )}
+                                        <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">商品名稱</label>
+                                        <input name="item" defaultValue={editingItem?.item} placeholder="例如: EVE止痛藥" required className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">備註</label>
+                                        <textarea name="notes" defaultValue={editingItem?.notes} placeholder="例如: 買藍色包裝的..." rows="2" className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)] resize-none"></textarea>
+                                    </div>
+
+                                    <div className="flex gap-3 mt-4">
+                                        <Button variant="outline" type="button" className="flex-1 justify-center" onClick={handleCloseModal}>取消</Button>
+                                        <Button type="submit" className="flex-1 justify-center">儲存</Button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const FoodList = () => {
+            const { activeTrip, setFullScreenImage } = useContext(AppContext);
+            if (!activeTrip) return null;
+
+            const scheduledFoodItems = activeTrip.dailyItinerary.flatMap(day =>
+                day.activities
+                    .filter(act => act.type === 'Food')
+                    .map(act => ({ ...act, dayId: day.day, date: day.date }))
+            ).sort((a, b) => new Date(a.date) - new Date(b.date) || a.time.localeCompare(b.time));
+
+            const savedFoodItems = activeTrip.savedPlaces 
+                ? Object.entries(activeTrip.savedPlaces).flatMap(([category, items]) => 
+                    items.filter(act => act.type === 'Food').map(act => ({ ...act, category }))
+                  )
+                : [];
+
+            const renderFoodCard = (item, isSaved) => (
+                <GlassCard key={item.id} className="p-4 flex flex-col sm:flex-row gap-4 group">
+                    <div className="w-12 h-12 rounded-2xl bg-orange-100 dark:bg-orange-900/30 text-orange-500 flex items-center justify-center shrink-0">
+                        <Utensils size={24} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            {isSaved ? (
+                                <span className="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300 font-bold border border-gray-200 dark:border-gray-600">📍 備用: {item.category}</span>
+                            ) : (
+                                <>
+                                    <span className="px-2 py-0.5 text-[10px] rounded-full bg-[rgba(var(--primary-rgb),0.1)] text-[var(--primary)] font-bold">Day {item.dayId}</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">{formatDateDisplay(item.date)}</span>
+                                    <span className="text-xs text-gray-400 font-mono">{item.time}</span>
+                                </>
+                            )}
+                        </div>
+                        <h4 className="font-bold text-lg text-gray-800 dark:text-gray-100 truncate">{item.location}</h4>
+                        {item.address && (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 flex items-start gap-1 mt-1">
+                                <MapPin size={14} className="shrink-0 mt-0.5" />
+                                <span className="line-clamp-2">{item.address}</span>
+                            </p>
+                        )}
+                        {item.operatingHours && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
+                                <Clock size={12} className="shrink-0" />
+                                <span>營業時間: {item.operatingHours}</span>
+                            </p>
+                        )}
+                        {item.notes && <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg whitespace-pre-wrap border border-gray-100 dark:border-gray-700">{item.notes}</p>}
+                        
+                        {item.attachment && (
+                            <div 
+                                className="mt-3 w-24 h-24 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700 cursor-zoom-in relative group/img"
+                                onClick={(e) => { e.stopPropagation(); setFullScreenImage(item.attachment); }}
+                            >
+                                <img src={item.attachment} className="w-full h-full object-cover group-hover/img:scale-105 transition-transform" alt="attachment" />
+                                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center">
+                                    <span className="opacity-0 group-hover/img:opacity-100 text-white text-xs bg-black/50 px-2 py-1 rounded-lg">放大</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex sm:flex-col items-center justify-center sm:justify-end gap-2 shrink-0 border-t sm:border-t-0 sm:border-l border-gray-100 dark:border-gray-700 pt-3 sm:pt-0 sm:pl-4">
+                        {item.link && (
+                            <a href={item.link} target="_blank" rel="noreferrer" className="w-full text-center px-4 py-2 bg-gray-100 hover:bg-[var(--primary)] hover:text-white dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-[var(--primary)] dark:hover:text-white text-sm font-medium rounded-xl transition-colors whitespace-nowrap">
+                                查看餐廳
+                            </a>
+                        )}
+                        {(item.mapLink || (item.link && item.link.includes('maps'))) && (
+                            <a href={item.mapLink || item.link} target="_blank" rel="noreferrer" className="w-full text-center px-4 py-2 bg-gray-100 hover:bg-[#4D96FF] hover:text-white dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-[#4D96FF] dark:hover:text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-1 whitespace-nowrap">
+                                <MapPin size={14}/> 導航
+                            </a>
+                        )}
+                    </div>
+                </GlassCard>
+            );
+
+            return (
+                <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-10 pb-32">
+                    <div className="flex justify-between items-center mb-2">
+                        <div>
+                            <h2 className="text-3xl font-black text-[#2D3436] dark:text-white tracking-tight">美食地圖</h2>
+                            <p className="text-gray-500 text-sm mt-1 font-medium">行程中與備用的所有餐廳</p>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                        <h3 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2"><CalendarCheck size={18}/> 行程中的美食</h3>
+                        {scheduledFoodItems.length === 0 ? (
+                            <div className="text-center text-gray-400 py-10 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/50">尚無美食行程</div>
+                        ) : (
+                            <div className="grid gap-4">
+                                {scheduledFoodItems.map(item => renderFoodCard(item, false))}
+                            </div>
+                        )}
+                    </div>
+
+                    {savedFoodItems.length > 0 && (
+                        <div className="space-y-4 pt-4">
+                            <h3 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2"><ShoppingBag size={18}/> 備用與願望清單</h3>
+                            <div className="grid gap-4">
+                                {savedFoodItems.map(item => renderFoodCard(item, true))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const SettingsPage = () => {
+            const { activeTrip, deleteTrip, updateTrip, setCurrentView, setActiveTripId, data, updateThemeColor, updateSettings } = useContext(AppContext);
+            const [previewImage, setPreviewImage] = useState(activeTrip.coverImage);
+            const [isProcessing, setIsProcessing] = useState(false);
+            const fileInputRef = useRef(null);
+
+            const handleImageChange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    setIsProcessing(true);
+                    try {
+                        const base64 = await processImageUpload(file);
+                        setPreviewImage(base64);
+                        updateTrip(activeTrip.id, { coverImage: base64 });
+                    } catch (err) {
+                        console.error("Image processing failed", err);
+                        alert("圖片處理失敗");
+                    } finally {
+                        setIsProcessing(false);
+                    }
+                }
+            };
+
+            const handleSaveDate = (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                updateTrip(activeTrip.id, {
+                    title: fd.get('title'),
+                    startDate: fd.get('startDate'),
+                    endDate: fd.get('endDate')
+                });
+                alert("設定已更新！");
+            };
+
+            const handleDelete = () => {
+                if(confirm("確定要刪除此旅程嗎？此操作無法復原。")) {
+                    deleteTrip(activeTrip.id);
+                    setActiveTripId(null);
+                    setCurrentView('dashboard');
+                }
+            };
+
+            return (
+                <div className="p-6 md:p-10 max-w-2xl mx-auto space-y-8 pb-32">
+                    <h2 className="text-2xl font-bold text-[#2D3436] dark:text-white">旅程設置</h2>
+                    
+                    <section className="space-y-4">
+                        <h3 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2"><Palette size={18}/> 顯示設定</h3>
+                        
+                        <div className="mt-2">
+                            <label className="text-sm text-gray-500 dark:text-gray-400 mb-2 block">主題顏色</label>
+                            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                                {THEME_PRESETS.map(theme => (
+                                    <button key={theme.color} onClick={() => updateThemeColor(theme.color)} className={`flex flex-col items-center gap-2 p-2 rounded-2xl border transition-all ${data.themeColor === theme.color ? 'border-[var(--primary)] bg-[rgba(var(--primary-rgb),0.1)]' : 'border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                                        <div className="w-8 h-8 rounded-full shadow-sm" style={{ backgroundColor: theme.color }} />
+                                        <span className="text-xs text-gray-600 dark:text-gray-300">{theme.name}</span>
+                                    </button>
+                                ))}
+                                <label className={`flex flex-col items-center gap-2 p-2 rounded-2xl border border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700`}>
+                                    <div className="w-8 h-8 rounded-full shadow-sm bg-gradient-to-br from-red-400 to-blue-400 flex items-center justify-center text-white"><Plus size={14} /></div>
+                                    <span className="text-xs text-gray-600 dark:text-gray-300">自訂</span>
+                                    <input type="color" value={data.themeColor} onChange={(e) => updateThemeColor(e.target.value)} className="absolute opacity-0 w-0 h-0"/>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="flex flex-col justify-center p-4 rounded-3xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 gap-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3"><div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-300"><Type size={20} /></div><span className="font-medium text-gray-700 dark:text-gray-200">字體大小</span></div>
+                                    <span className="text-xs font-bold text-[var(--primary)]">{data.settings?.fontSize || 16}px</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xs text-gray-400">12</span>
+                                    <input type="range" min="12" max="36" step="1" value={data.settings?.fontSize || 16} onChange={(e) => updateSettings('fontSize', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-[var(--primary)]"/>
+                                    <span className="text-xs text-gray-400">36</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 rounded-3xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+                                <div className="flex items-center gap-3"><div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-300"><Moon size={20} /></div><span className="font-medium text-gray-700 dark:text-gray-200">深色模式</span></div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" className="sr-only peer" checked={data.settings?.darkMode || false} onChange={(e) => updateSettings('darkMode', e.target.checked)}/>
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                        <h3 className="font-bold text-gray-700 dark:text-gray-300">基本資訊</h3>
+                        <form onSubmit={handleSaveDate} className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-sm text-gray-500 dark:text-gray-400">旅程名稱</label>
+                                <input name="title" defaultValue={activeTrip.title} className="w-full border dark:border-gray-600 dark:bg-gray-800 dark:text-white p-2 rounded-xl outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"/>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1"><label className="text-sm text-gray-500 dark:text-gray-400">開始日期</label><input type="date" name="startDate" defaultValue={activeTrip.startDate} className="w-full border dark:border-gray-600 dark:bg-gray-800 dark:text-white p-2 rounded-xl outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"/></div>
+                                <div className="space-y-1"><label className="text-sm text-gray-500 dark:text-gray-400">結束日期</label><input type="date" name="endDate" defaultValue={activeTrip.endDate} className="w-full border dark:border-gray-600 dark:bg-gray-800 dark:text-white p-2 rounded-xl outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"/></div>
+                            </div>
+                            <Button type="submit" className="w-full justify-center">儲存變更</Button>
+                        </form>
+                    </section>
+
+                    <section className="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                        <h3 className="font-bold text-gray-700 dark:text-gray-300">封面圖片</h3>
+                        <div className="relative h-48 rounded-3xl overflow-hidden cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
+                            <img src={previewImage} className="w-full h-full object-cover"/>
+                            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"><Upload size={24}/><span className="text-sm mt-2">{isProcessing ? '處理中...' : '更換圖片'}</span></div>
+                            <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden"/>
+                        </div>
+                    </section>
+
+                    <section className="pt-8 border-t border-red-100 dark:border-red-900/30">
+                        <h3 className="font-bold text-red-500 mb-2">危險區域</h3>
+                        <Button variant="danger" className="w-full justify-center" onClick={handleDelete}><Trash2 size={16}/> 刪除此旅程</Button>
+                    </section>
+                </div>
+            );
+        };
+
+        const Dashboard = () => {
+          const { data, addTrip, deleteTrip, setActiveTripId, setCurrentView } = useContext(AppContext);
+          const [showCreateModal, setShowCreateModal] = useState(false);
+          const [openMenuId, setOpenMenuId] = useState(null);
+
+          const handleCardClick = (id) => { setActiveTripId(id); setCurrentView('trip-detail'); };
+
+          const handleCreate = (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const startDate = formData.get('startDate');
+            const endDate = formData.get('endDate');
+            
+            const start = parseDateUTC(startDate);
+            const end = parseDateUTC(endDate);
+            const days = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1;
+            
+            const itinerary = Array.from({ length: days }, (_, i) => {
+              const currentDayDate = new Date(start);
+              currentDayDate.setUTCDate(start.getUTCDate() + i);
+              return {
+                day: i + 1,
+                date: currentDayDate.toISOString().split('T')[0],
+                weather: ['sun', 'cloud-sun', 'cloud'][Math.floor(Math.random() * 3)],
+                temp: '15°C / 22°C',
+                activities: []
+              };
+            });
+
+            addTrip({
+              id: crypto.randomUUID(),
+              title: formData.get('title'),
+              startDate,
+              endDate,
+              status: 'planning',
+              coverImage: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&q=80&w=1000',
+              dailyItinerary: itinerary,
+              savedPlaces: { '博多': [], '天神': [], '藥院': [], 'LaLaport': [], '有用網址': [] },
+              budget: { total: 0 },
+              checklist: DEFAULT_CHECKLIST_ITEMS.map((item, index) => ({ id: crypto.randomUUID(), item, completed: false })),
+              shoppingList: [],
+              reservations: []
+            });
+            setShowCreateModal(false);
+          };
+
+          return (
+            <div className="space-y-8 p-6 md:p-10 max-w-7xl mx-auto min-h-screen pb-20" onClick={() => setOpenMenuId(null)}>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                <div>
+                    <h2 className="text-3xl font-bold text-[#2D3436] dark:text-white">我的旅程</h2>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">開始規劃你的下一趟冒險</p>
+                </div>
+                <Button onClick={() => setShowCreateModal(true)}><Plus size={18} /> 新增旅程</Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {data.trips.map(trip => {
+                   const daysLeft = Math.ceil((new Date(trip.startDate) - new Date()) / (1000 * 60 * 60 * 24));
+                   const isPast = daysLeft < 0;
+                   const plannedDays = trip.dailyItinerary.filter(d => d.activities.length > 0).length;
+                   const totalDays = trip.dailyItinerary.length;
+                   const progress = totalDays > 0 ? Math.round((plannedDays / totalDays) * 100) : 0;
+
+                   return (
+                    <GlassCard key={trip.id} className="group cursor-pointer flex flex-col h-full relative" onClick={() => handleCardClick(trip.id)}>
+                      <div className="h-48 overflow-hidden relative rounded-t-3xl">
+                        <img src={trip.coverImage} alt={trip.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                        <div className="absolute bottom-4 left-4 text-white">
+                          <h3 className="font-bold text-lg">{trip.title}</h3>
+                          <div className="flex items-center gap-2 text-xs opacity-90 mt-1">
+                            <Calendar size={12} />
+                            {trip.startDate} - {trip.endDate} 
+                            <span className="ml-1 opacity-90">{calculateDuration(trip.startDate, trip.endDate)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-5 flex flex-col flex-1 bg-[#FFFFFF] dark:bg-gray-800 rounded-b-3xl">
+                        <div className="flex justify-between items-center mb-4 relative">
+                          <span className={`text-xs px-2 py-1 rounded-full ${isPast ? 'bg-gray-100 text-gray-500' : 'bg-[rgba(var(--primary-rgb),0.1)] text-[var(--primary)]'}`}>{isPast ? '已結束' : `還有 ${daysLeft} 天出發`}</span>
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
+                             <button className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === trip.id ? null : trip.id); }}><MoreHorizontal size={20} /></button>
+                             {openMenuId === trip.id && (
+                               <div className="absolute right-0 top-full mt-2 w-32 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                 <button className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2" onClick={(e) => { e.stopPropagation(); deleteTrip(trip.id); }}><Trash2 size={14} /> 刪除</button>
+                               </div>
+                             )}
+                          </div>
+                        </div>
+                        <div className="mt-auto">
+                          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-2"><span>規劃進度</span><span>{progress}%</span></div>
+                          <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden"><div className="h-full bg-[var(--primary)] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} /></div>
+                        </div>
+                      </div>
+                    </GlassCard>
+                  )
+                })}
+              </div>
+
+              <div className="mt-12 bg-[rgba(var(--primary-rgb),0.05)] p-6 rounded-3xl border border-[rgba(var(--primary-rgb),0.2)] flex gap-4 items-start max-w-lg mx-auto">
+                <div className="p-3 bg-[var(--primary)] rounded-full text-white shrink-0 shadow-lg shadow-[var(--primary)]/30"><Sparkles size={20}/></div>
+                <div>
+                    <h4 className="text-[var(--primary)] font-bold mb-1">每日靈感</h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">「一期一會」<br/>把每一次相遇都當作一生只有一次的緣分來珍惜。</p>
+                </div>
+              </div>
+
+              {showCreateModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+                  <div className="bg-[#FFFFFF] dark:bg-gray-800 rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+                    <h3 className="text-xl font-bold mb-4 text-[#2D3436] dark:text-white">新增旅程</h3>
+                    <form onSubmit={handleCreate} className="space-y-4">
+                      <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">旅程名稱</label><input name="title" required placeholder="例如：京都紅葉狩" className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white border-gray-200 rounded-xl p-2.5 focus:ring-2 focus:ring-[var(--primary)] outline-none" /></div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">開始日期</label><input type="date" name="startDate" required className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white border-gray-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]" /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">結束日期</label><input type="date" name="endDate" required className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white border-gray-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]" /></div>
+                      </div>
+                      <div className="flex gap-3 mt-6"><Button variant="outline" type="button" className="flex-1 justify-center" onClick={() => setShowCreateModal(false)}>取消</Button><Button type="submit" className="flex-1 justify-center">建立</Button></div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        const Preparation = () => {
+          const { activeTrip, updateChecklist } = useContext(AppContext);
+          const [hkdRate, setHkdRate] = useState('0.052');
+          const [jpyAmount, setJpyAmount] = useState(1000);
+          const [newItem, setNewItem] = useState('');
+          const [editingId, setEditingId] = useState(null);
+          const [editingText, setEditingText] = useState('');
+          const [draggedItem, setDraggedItem] = useState(null);
+
+          const toggleCheck = (id) => updateChecklist(activeTrip.id, activeTrip.checklist.map(c => c.id === id ? { ...c, completed: !c.completed } : c));
+          const addCheckItem = (e) => { e.preventDefault(); if(newItem.trim()) { updateChecklist(activeTrip.id, [...activeTrip.checklist, { id: crypto.randomUUID(), item: newItem, completed: false }]); setNewItem(''); } };
+          const deleteCheckItem = (e, id) => { e.stopPropagation(); updateChecklist(activeTrip.id, activeTrip.checklist.filter(c => c.id !== id)); };
+          const saveEditing = (e) => { e.stopPropagation(); if(editingText.trim()) { updateChecklist(activeTrip.id, activeTrip.checklist.map(c => c.id === editingId ? { ...c, item: editingText.trim() } : c)); } setEditingId(null); };
+
+          const handleDragStart = (e, index) => {
+              setDraggedItem(index);
+              e.dataTransfer.effectAllowed = "move";
+          };
+
+          const handleDragOver = (e, index) => {
+              e.preventDefault();
+              if (draggedItem === null || draggedItem === index) return;
+              
+              const newList = [...activeTrip.checklist];
+              const item = newList[draggedItem];
+              newList.splice(draggedItem, 1);
+              newList.splice(index, 0, item);
+              
+              setDraggedItem(index);
+              updateChecklist(activeTrip.id, newList);
+          };
+
+          const handleDragEnd = () => {
+              setDraggedItem(null);
+          };
+
+          const moveItem = (index, direction) => {
+              if (direction === 'up' && index === 0) return;
+              if (direction === 'down' && index === activeTrip.checklist.length - 1) return;
+              const newList = [...activeTrip.checklist];
+              const swapIndex = direction === 'up' ? index - 1 : index + 1;
+              [newList[index], newList[swapIndex]] = [newList[swapIndex], newList[index]];
+              updateChecklist(activeTrip.id, newList);
+          };
+
+          return (
+            <div className="p-6 md:p-10 max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 pb-32">
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2"><CheckCircle2 className="text-[var(--primary)]" /> 出發前準備</h2>
+                <GlassCard className="min-h-[400px] flex flex-col">
+                  <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-3xl">
+                    <form onSubmit={addCheckItem} className="flex gap-2">
+                      <input value={newItem} onChange={e => setNewItem(e.target.value)} placeholder="新增準備事項..." className="flex-1 bg-white dark:bg-gray-800 dark:text-white border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-[var(--primary)]"/>
+                      <Button type="submit" size="sm"><Plus size={16} /></Button>
+                    </form>
+                  </div>
+                  <div className="px-4 pt-4 pb-2">
+                     <MobileDragHint />
+                  </div>
+                  <div className="p-2 space-y-1 flex-1 overflow-y-auto">
+                     {activeTrip.checklist.map((c, index) => (
+                       <div 
+                         key={c.id} 
+                         draggable
+                         onDragStart={(e) => handleDragStart(e, index)}
+                         onDragOver={(e) => handleDragOver(e, index)}
+                         onDragEnd={handleDragEnd}
+                         onClick={() => { if(editingId !== c.id) toggleCheck(c.id); }} 
+                         className={`group flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-300 ${c.completed ? 'bg-gray-50 dark:bg-gray-900/30' : 'hover:bg-white dark:hover:bg-gray-700 hover:shadow-sm'} ${draggedItem === index ? 'opacity-50 scale-95' : 'opacity-100'}`}
+                       >
+                         <div className="flex flex-col items-center justify-center text-gray-300 shrink-0" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+                            <button onClick={(e) => { e.stopPropagation(); moveItem(index, 'up'); }} disabled={index === 0} className="p-0.5 hover:text-[var(--primary)] md:hidden disabled:opacity-30"><ChevronUp size={16}/></button>
+                            <GripVertical size={16} className="hidden md:block cursor-move hover:text-gray-500" />
+                            <button onClick={(e) => { e.stopPropagation(); moveItem(index, 'down'); }} disabled={index === activeTrip.checklist.length - 1} className="p-0.5 hover:text-[var(--primary)] md:hidden disabled:opacity-30"><ChevronDown size={16}/></button>
+                         </div>
+                         {editingId === c.id ? (
+                           <div className="flex-1 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                             <input value={editingText} onChange={e => setEditingText(e.target.value)} className="flex-1 border border-[var(--primary)] rounded-xl px-2 py-1 text-sm outline-none dark:bg-gray-800 dark:text-white" autoFocus />
+                             <button onClick={saveEditing} className="p-1 text-green-600 hover:bg-green-50 rounded-full"><Check size={16}/></button>
+                             <button onClick={e => {e.stopPropagation(); setEditingId(null)}} className="p-1 text-red-500 hover:bg-red-50 rounded-full"><X size={16}/></button>
+                           </div>
+                         ) : (
+                           <>
+                             <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${c.completed ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : 'border-gray-300 dark:border-gray-500'}`}>{c.completed && <CheckCircle2 size={14} />}</div>
+                             <span className={`flex-1 ${c.completed ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-200'}`}>{c.item}</span>
+                             <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                               <button onClick={(e) => { e.stopPropagation(); setEditingId(c.id); setEditingText(c.item); }} className="p-1.5 text-gray-400 hover:text-[var(--primary)] hover:bg-[rgba(var(--primary-rgb),0.1)] rounded-xl"><Pencil size={14} /></button>
+                               <button onClick={(e) => deleteCheckItem(e, c.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl"><Trash2 size={14} /></button>
+                             </div>
+                           </>
+                         )}
+                       </div>
+                     ))}
+                  </div>
+                </GlassCard>
+              </div>
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2"><ArrowRightLeft className="text-[#4D96FF]" /> 匯率換算</h2>
+                <GlassCard className="p-8 space-y-8">
+                   <div className="flex items-center justify-between text-sm text-gray-500 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-2xl">
+                     <span className="dark:text-gray-300">當前匯率參考</span>
+                     <div className="font-mono dark:text-gray-200 flex items-center gap-1">
+                        1 JPY ≈ 
+                        <input 
+                          type="number" 
+                          step="0.001" 
+                          value={hkdRate} 
+                          onChange={e => setHkdRate(e.target.value)} 
+                          className="w-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md px-2 py-0.5 text-center outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] transition-all text-gray-700 dark:text-gray-200"
+                        /> 
+                        HKD
+                     </div>
+                   </div>
+                   <div className="space-y-6">
+                     <div className="relative"><label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 block">日圓 (JPY)</label><div className="relative"><JapaneseYen className="absolute left-3 top-3 text-gray-400" size={20} /><input type="number" value={jpyAmount} onChange={e => setJpyAmount(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-700 dark:text-white border border-gray-200 dark:border-gray-600 rounded-2xl text-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[var(--primary)]"/></div></div>
+                     <div className="flex justify-center -my-2 z-10 relative"><div className="bg-white dark:bg-gray-800 border dark:border-gray-600 p-2 rounded-full shadow-sm text-gray-400"><ArrowRightLeft size={16} className="transform rotate-90" /></div></div>
+                     <div className="relative"><label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 block">港幣 (HKD)</label><div className="w-full pl-4 pr-4 py-3 bg-[#f0f9ff] dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl text-2xl font-bold text-blue-800 dark:text-blue-300">$ {(jpyAmount * (Number(hkdRate) || 0)).toFixed(2)}</div></div>
+                   </div>
+                </GlassCard>
+              </div>
+            </div>
+          );
+        };
+
+        const BudgetPage = () => {
+          const { activeTrip, updateItinerary, updateTrip } = useContext(AppContext);
+          const [editingExpense, setEditingExpense] = useState(null);
+          const [showAddExpense, setShowAddExpense] = useState(false);
+
+          // Combine both scheduled activities and saved places for total spent calculation
+          const allActivities = [
+            ...activeTrip.dailyItinerary.flatMap(d => d.activities.map(a => ({...a, dayId: d.day, date: d.date}))),
+            ...(activeTrip.savedPlaces ? Object.entries(activeTrip.savedPlaces).flatMap(([cat, items]) => items.map(a => ({...a, isSaved: true, category: cat}))) : [])
+          ];
+
+          const spentData = allActivities.reduce((acc, act) => {
+            if(act.cost > 0) {
+                acc[act.type] = (acc[act.type] || 0) + act.cost; 
+                acc.total += act.cost; 
+            }
+            return acc;
+          }, { total: 0 });
+          
+          const pieSlices = Object.keys(ACTIVITY_TYPES).map(cat => ({ type: cat, value: spentData[cat] || 0, color: ACTIVITY_TYPES[cat].color })).filter(d => d.value > 0);
+          
+          let accPercent = 0;
+          const svgSlices = pieSlices.map((slice, i) => {
+              const p = slice.value / spentData.total;
+              const dash = `${p * 100} 100`;
+              const off = 25 - (accPercent * 100);
+              accPercent += p;
+              const color = slice.type === 'Food' ? '#FF9F1C' : slice.type === 'Sightseeing' ? '#4D96FF' : slice.type === 'Transport' ? '#10B981' : slice.type === 'Hotel' ? '#A855F7' : '#FFD93D';
+              return <circle key={i} r="15.9155" cx="20" cy="20" fill="transparent" stroke={color} strokeWidth="4" strokeDasharray={dash} strokeDashoffset={off} />;
+          });
+
+          const allExpenses = allActivities.filter(act => act.cost > 0).sort((a, b) => {
+              if (a.isSaved && !b.isSaved) return 1;
+              if (!a.isSaved && b.isSaved) return -1;
+              return (new Date(a.date) - new Date(b.date)) || (a.time || '').localeCompare(b.time || '');
+          });
+
+          const handleEditSave = (e) => {
+              e.preventDefault();
+              if(!editingExpense) return;
+              const fd = new FormData(e.target);
+              const newCost = parseInt(fd.get('cost') || 0);
+              const newNotes = fd.get('notes');
+
+              if (editingExpense.isSaved) {
+                  const newSavedPlaces = { ...activeTrip.savedPlaces };
+                  newSavedPlaces[editingExpense.category] = newSavedPlaces[editingExpense.category].map(act => 
+                      act.id === editingExpense.id ? { ...act, cost: newCost, notes: newNotes } : act
+                  );
+                  updateTrip(activeTrip.id, { savedPlaces: newSavedPlaces });
+              } else {
+                  const newItinerary = activeTrip.dailyItinerary.map(day => {
+                      if(day.day !== editingExpense.dayId) return day;
+                      return {
+                          ...day,
+                          activities: day.activities.map(act => 
+                              act.id === editingExpense.id ? { ...act, cost: newCost, notes: newNotes } : act
+                          )
+                      };
+                  });
+                  updateItinerary(activeTrip.id, newItinerary);
+              }
+              setEditingExpense(null);
+          };
+
+          const handleAddExpense = (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.target);
+              const date = fd.get('date');
+              const type = fd.get('type');
+              const cost = parseInt(fd.get('cost') || 0);
+              const title = fd.get('title');
+              const notes = fd.get('notes');
+
+              const targetDay = activeTrip.dailyItinerary.find(d => d.date === date);
+              
+              if (targetDay) {
+                  const newActivity = {
+                      id: crypto.randomUUID(),
+                      type: type,
+                      time: '12:00',
+                      location: title,
+                      notes: notes,
+                      cost: cost
+                  };
+
+                  const newItinerary = activeTrip.dailyItinerary.map(day => {
+                      if(day.day !== targetDay.day) return day;
+                      return {
+                          ...day,
+                          activities: [...day.activities, newActivity]
+                      };
+                  });
+                  updateItinerary(activeTrip.id, newItinerary);
+                  setShowAddExpense(false);
+              } else {
+                  alert('請選擇行程範圍內的日期');
+              }
+          };
+
+          const handleDeleteExpense = (expense) => {
+              if(!confirm("確定要刪除此筆支出嗎？\n(注意：這將會從行程表中移除此活動)")) return;
+              
+              if (expense.isSaved) {
+                  const newSavedPlaces = { ...activeTrip.savedPlaces };
+                  newSavedPlaces[expense.category] = newSavedPlaces[expense.category].filter(act => act.id !== expense.id);
+                  updateTrip(activeTrip.id, { savedPlaces: newSavedPlaces });
+              } else {
+                  const newItinerary = activeTrip.dailyItinerary.map(day => {
+                      if(day.day !== expense.dayId) return day;
+                      return {
+                          ...day,
+                          activities: day.activities.filter(act => act.id !== expense.id)
+                      };
+                  });
+                  updateItinerary(activeTrip.id, newItinerary);
+              }
+          };
+
+          return (
+            <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-8 pb-32">
+              <div className="flex justify-between items-center">
+                  <h2 className="text-2xl font-bold text-gray-800 dark:text-white">支出統計</h2>
+                  <Button onClick={() => setShowAddExpense(true)} className="rounded-full px-4"><Plus size={18}/> 新增支出</Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-[#FFFFFF] dark:bg-gray-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                 <div className="flex justify-center relative">
+                    <svg viewBox="0 0 40 40" className="w-64 h-64 transform -rotate-90 drop-shadow-sm">
+                        {spentData.total === 0 && <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="currentColor" className="text-gray-100 dark:text-gray-700" strokeWidth="4" />}
+                        {svgSlices}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-sm font-medium text-gray-400 dark:text-gray-500 mb-1">總花費</span>
+                        <span className="text-2xl font-black text-gray-800 dark:text-gray-100 tracking-tight">¥ {spentData.total.toLocaleString()}</span>
+                    </div>
+                 </div>
+                 <div className="space-y-4">
+                   {Object.keys(ACTIVITY_TYPES).map(cat => {
+                     const val = spentData[cat] || 0;
+                     const percent = spentData.total > 0 ? (val / spentData.total * 100).toFixed(1) : 0;
+                     const Icon = ACTIVITY_TYPES[cat].icon;
+                     return (
+                         <div key={cat} className="flex items-center gap-4">
+                             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${ACTIVITY_TYPES[cat].bg} ${ACTIVITY_TYPES[cat].color}`}><Icon size={18} /></div>
+                             <div className="flex-1">
+                                 <div className="flex justify-between text-sm font-medium mb-1"><span className="dark:text-gray-300">{ACTIVITY_TYPES[cat].label}</span><span className="dark:text-gray-300">¥ {val.toLocaleString()}</span></div>
+                                 <div className="h-2 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden"><div className={`h-full rounded-full ${ACTIVITY_TYPES[cat].bg.replace('bg-', 'bg-')}`} style={{width: `${percent}%`, backgroundColor: 'currentColor'}}/></div>
+                             </div>
+                             <div className="text-xs text-gray-400 w-10 text-right">{percent}%</div>
+                         </div>
+                     );
+                   })}
+                 </div>
+              </div>
+
+              <div className="space-y-4">
+                  <h3 className="font-bold text-gray-700 dark:text-gray-200 text-lg">支出明細</h3>
+                  <div className="space-y-3">
+                      {allExpenses.map((expense) => {
+                          const TypeIcon = ACTIVITY_TYPES[expense.type]?.icon || Circle;
+                          return (
+                            <GlassCard key={expense.id} className="p-4 flex flex-col md:flex-row md:items-center gap-4 group">
+                                <div className="flex items-center gap-4 flex-1 min-w-0">
+                                    {expense.isSaved ? (
+                                        <div className="flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 shrink-0 text-[10px] font-bold px-1 text-center">
+                                            備用
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 shrink-0">
+                                            <span className="text-xs font-bold">{parseInt(expense.date.split('-')[1])}月</span>
+                                            <span className="text-lg font-bold text-[var(--primary)]">{parseInt(expense.date.split('-')[2])}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`px-2 py-0.5 text-[10px] rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center gap-1 shrink-0`}>
+                                                <TypeIcon size={10} /> {ACTIVITY_TYPES[expense.type]?.label}
+                                            </span>
+                                            {!expense.isSaved && <span className="text-xs text-gray-400 font-mono shrink-0">{expense.time}</span>}
+                                        </div>
+                                        <h4 className="font-bold text-gray-800 dark:text-gray-100 truncate">{expense.location}</h4>
+                                        {expense.notes && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{expense.notes}</p>}
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t md:border-t-0 border-gray-100 dark:border-gray-700 pt-3 md:pt-0 shrink-0">
+                                    <span className="font-bold text-lg text-gray-700 dark:text-gray-200">¥ {expense.cost.toLocaleString()}</span>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => setEditingExpense(expense)} className="p-2 text-gray-400 hover:text-[var(--primary)] hover:bg-[rgba(var(--primary-rgb),0.1)] rounded-lg transition-colors"><Pencil size={16}/></button>
+                                        <button onClick={() => handleDeleteExpense(expense)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                                    </div>
+                                </div>
+                            </GlassCard>
+                          );
+                      })}
+                      {allExpenses.length === 0 && <div className="text-center text-gray-400 py-10 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">尚無支出紀錄</div>}
+                  </div>
+              </div>
+
+              {showAddExpense && (
+                  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={() => setShowAddExpense(false)}>
+                      <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                          <div className="flex justify-between items-center mb-4">
+                              <h3 className="text-lg font-bold dark:text-white">新增支出</h3>
+                              <button onClick={() => setShowAddExpense(false)} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+                          </div>
+                          <form onSubmit={handleAddExpense} className="space-y-4">
+                              <div className="grid grid-cols-5 gap-2 mb-4">{Object.entries(ACTIVITY_TYPES).map(([key, config]) => (<label key={key} className="cursor-pointer"><input type="radio" name="type" value={key} className="peer hidden" defaultChecked={key === 'Food'} /><div className={`flex flex-col items-center gap-1 p-2 rounded-lg border border-transparent hover:bg-gray-50 dark:hover:bg-gray-700 peer-checked:bg-gray-100 dark:peer-checked:bg-gray-700 peer-checked:border-gray-200 dark:peer-checked:border-gray-600 peer-checked:${config.color}`}><config.icon size={20} /><span className="text-[10px] font-medium dark:text-gray-300">{config.label}</span></div></label>))}</div>
+                              
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">日期</label>
+                                  <input type="date" name="date" required defaultValue={activeTrip.startDate} min={activeTrip.startDate} max={activeTrip.endDate} className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">項目名稱</label>
+                                  <input name="title" required placeholder="例如: 午餐" className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">金額 (JPY)</label>
+                                  <input type="number" name="cost" required placeholder="0" className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">備註</label>
+                                  <input name="notes" className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                              </div>
+                              <div className="flex gap-3 mt-6">
+                                  <Button variant="outline" type="button" className="flex-1 justify-center" onClick={() => setShowAddExpense(false)}>取消</Button>
+                                  <Button type="submit" className="flex-1 justify-center">新增</Button>
+                              </div>
+                          </form>
+                      </div>
+                  </div>
+              )}
+
+              {editingExpense && (
+                <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={() => setEditingExpense(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold dark:text-white">編輯支出</h3>
+                            <button onClick={() => setEditingExpense(null)} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+                        </div>
+                        <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl flex items-center gap-3">
+                             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${ACTIVITY_TYPES[editingExpense.type]?.bg} ${ACTIVITY_TYPES[editingExpense.type]?.color}`}>
+                                {React.createElement(ACTIVITY_TYPES[editingExpense.type]?.icon || Circle, { size: 20 })}
+                             </div>
+                             <div>
+                                 <div className="font-bold text-gray-800 dark:text-gray-200">{editingExpense.location}</div>
+                                 {!editingExpense.isSaved && <div className="text-xs text-gray-500">{formatDateDisplay(editingExpense.date)} {editingExpense.time}</div>}
+                                 {editingExpense.isSaved && <div className="text-xs text-gray-500">備用清單: {editingExpense.category}</div>}
+                             </div>
+                        </div>
+                        <form onSubmit={handleEditSave} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">金額 (JPY)</label>
+                                <input type="number" name="cost" defaultValue={editingExpense.cost} required className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)] text-lg font-bold"/>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">備註</label>
+                                <input name="notes" defaultValue={editingExpense.notes} className="w-full border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-[var(--primary)]"/>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <Button variant="outline" type="button" className="flex-1 justify-center" onClick={() => setEditingExpense(null)}>取消</Button>
+                                <Button type="submit" className="flex-1 justify-center">儲存</Button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        const TripDetail = () => {
+          const { activeTrip, updateItinerary, updateTrip, setFullScreenImage } = useContext(AppContext);
+          const [selectedDay, setSelectedDay] = useState(1);
+          const [showAddModal, setShowAddModal] = useState(false);
+          const [draggedItem, setDraggedItem] = useState(null);
+          const [editingAct, setEditingAct] = useState(null);
+          const [previewImage, setPreviewImage] = useState('');
+          const fileInputRef = useRef(null);
+
+          if (!activeTrip) return null;
+          
+          const isSavedPlace = typeof selectedDay === 'string';
+          const currentDayData = isSavedPlace 
+              ? { day: selectedDay, date: null, weather: null, activities: activeTrip.savedPlaces?.[selectedDay] || [] }
+              : (activeTrip.dailyItinerary.find(d => d.day === selectedDay) || activeTrip.dailyItinerary[0]);
+          
+          if (!currentDayData) return null;
+
+          const handleDragStart = (e, index) => { 
+              setDraggedItem(index); 
+              e.dataTransfer.effectAllowed = "move"; 
+          };
+          
+          const handleDragOver = (e, index) => { 
+              e.preventDefault(); 
+              if (draggedItem !== null && draggedItem !== index) { 
+                  const newActivities = [...currentDayData.activities]; 
+                  const item = newActivities[draggedItem]; 
+                  newActivities.splice(draggedItem, 1); 
+                  newActivities.splice(index, 0, item); 
+                  
+                  if (isSavedPlace) {
+                      updateTrip(activeTrip.id, { savedPlaces: { ...activeTrip.savedPlaces, [selectedDay]: newActivities } });
+                  } else {
+                      const newItinerary = activeTrip.dailyItinerary.map(day => day.day === selectedDay ? { ...day, activities: newActivities } : day); 
+                      updateItinerary(activeTrip.id, newItinerary); 
+                  }
+                  setDraggedItem(index); 
+              } 
+          };
+          
+          const handleDragEnd = () => setDraggedItem(null);
+          
+          const moveActivity = (index, direction) => {
+              const newActivities = [...currentDayData.activities];
+              if (direction === 'up' && index === 0) return;
+              if (direction === 'down' && index === newActivities.length - 1) return;
+              const swapIndex = direction === 'up' ? index - 1 : index + 1;
+              [newActivities[index], newActivities[swapIndex]] = [newActivities[swapIndex], newActivities[index]];
+              
+              if (isSavedPlace) {
+                  updateTrip(activeTrip.id, { savedPlaces: { ...activeTrip.savedPlaces, [selectedDay]: newActivities } });
+              } else {
+                  const newItinerary = activeTrip.dailyItinerary.map(day => day.day === selectedDay ? { ...day, activities: newActivities } : day); 
+                  updateItinerary(activeTrip.id, newItinerary); 
+              }
+          };
+
+          const handleDeleteActivity = (actId) => { 
+              if(!confirm("確定刪除此項目？")) return;
+              if (isSavedPlace) {
+                  const newActivities = (activeTrip.savedPlaces?.[selectedDay] || []).filter(a => a.id !== actId);
+                  updateTrip(activeTrip.id, { savedPlaces: { ...activeTrip.savedPlaces, [selectedDay]: newActivities } });
+              } else {
+                  const newItinerary = activeTrip.dailyItinerary.map(day => day.day === selectedDay ? { ...day, activities: day.activities.filter(a => a.id !== actId) } : day); 
+                  updateItinerary(activeTrip.id, newItinerary); 
+              }
+          };
+
+          const openAddModal = () => { setEditingAct(null); setPreviewImage(''); setShowAddModal(true); };
+          const openEditModal = (act) => { setEditingAct(act); setPreviewImage(act.attachment || ''); setShowAddModal(true); };
+          const closeModal = () => { setShowAddModal(false); setEditingAct(null); setPreviewImage(''); };
+
+          const handleImageChange = async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+              try {
+                const base64 = await processImageUpload(file);
+                setPreviewImage(base64);
+              } catch (err) {
+                console.error("Image processing failed", err);
+                alert("圖片上傳失敗");
+              }
+            }
+          };
+
+          const handleSaveActivity = (e) => { 
+              e.preventDefault(); 
+              const fd = new FormData(e.target); 
+              const newAct = { 
+                  id: editingAct ? editingAct.id : crypto.randomUUID(), 
+                  time: fd.get('time') || '', 
+                  type: fd.get('type'), 
+                  location: fd.get('location'), 
+                  address: fd.get('address'),
+                  link: fd.get('link'),
+                  mapLink: fd.get('mapLink'),
+                  operatingHours: fd.get('operatingHours'),
+                  notes: fd.get('notes'), 
+                  cost: parseInt(fd.get('cost') || 0),
+                  attachment: previewImage
+              }; 
+
+              if (isSavedPlace) {
+                  let newActivities = [...(activeTrip.savedPlaces?.[selectedDay] || [])];
+                  if (editingAct) {
+                      newActivities = newActivities.map(a => a.id === editingAct.id ? newAct : a);
+                  } else {
+                      newActivities.push(newAct);
+                  }
+                  updateTrip(activeTrip.id, { savedPlaces: { ...activeTrip.savedPlaces, [selectedDay]: newActivities } });
+              } else {
+                  const newItinerary = activeTrip.dailyItinerary.map(day => {
+                      if (day.day === selectedDay) {
+                          let newActivities = [...day.activities];
+                          if (editingAct) {
+                              newActivities = newActivities.map(a => a.id === editingAct.id ? newAct : a);
+                          } else {
+                              newActivities.push(newAct);
+                          }
+                          return { ...day, activities: newActivities.sort((a,b) => a.time.localeCompare(b.time)) };
+                      }
+                      return day;
+                  }); 
+                  updateItinerary(activeTrip.id, newItinerary); 
+              }
+              closeModal(); 
+          };
+
+          return (
+            <div className="flex flex-col md:flex-row h-full overflow-hidden max-h-screen pb-20 md:pb-0">
+              <div className="w-full md:w-64 bg-[#FFFFFF] dark:bg-gray-800 border-r border-gray-100 dark:border-gray-700 overflow-x-auto md:overflow-y-auto p-4 flex md:flex-col gap-3 shrink-0 no-scrollbar">
+                 <h3 className="hidden md:block font-bold text-gray-800 dark:text-gray-200 mb-2 px-2">行程天數</h3>
+                 {activeTrip.dailyItinerary.map((day) => (
+                   <div 
+                     key={day.day} 
+                     onClick={() => setSelectedDay(day.day)} 
+                     className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-200 flex-shrink-0 w-32 md:w-full ${
+                       selectedDay === day.day 
+                         ? 'border-[var(--primary)] bg-[rgba(var(--primary-rgb),0.1)] dark:bg-[rgba(var(--primary-rgb),0.2)] shadow-md transform scale-[1.02]' 
+                         : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-[var(--primary)]/30'
+                     }`}
+                   >
+                     <div className="flex justify-between items-start mb-1">
+                       <span className={`font-bold text-lg ${selectedDay === day.day ? 'text-[var(--primary)]' : 'text-gray-800 dark:text-gray-200'}`}>
+                         Day {day.day}
+                       </span>
+                       <WeatherIcon type={day.weather} className="" />
+                     </div>
+                     <div className={`text-xs ${selectedDay === day.day ? "text-gray-600 dark:text-gray-300 font-medium" : "text-gray-400 dark:text-gray-500"}`}>
+                       {formatDateDisplay(day.date)}
+                     </div>
+                   </div>
+                 ))}
+
+                 <h3 className="hidden md:block font-bold text-gray-800 dark:text-gray-200 mt-4 mb-2 px-2 border-t border-gray-100 dark:border-gray-700 pt-4">備案與資訊</h3>
+                 {['博多', '天神', '藥院', 'LaLaport', '有用網址'].map(cat => (
+                     <div 
+                       key={cat} 
+                       onClick={() => setSelectedDay(cat)} 
+                       className={`cursor-pointer px-4 py-3 rounded-2xl border-2 transition-all duration-200 flex-shrink-0 md:w-full flex items-center gap-2 ${
+                         selectedDay === cat 
+                           ? 'border-gray-400 dark:border-gray-500 bg-gray-50 dark:bg-gray-700 shadow-sm transform scale-[1.02]' 
+                           : 'bg-white dark:bg-gray-800 border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+                       }`}
+                     >
+                         <MapPin size={16} className={selectedDay === cat ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400'}/>
+                         <span className={`font-bold text-sm ${selectedDay === cat ? 'text-gray-800 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
+                           {cat}
+                         </span>
+                     </div>
+                 ))}
+              </div>
+              <div className="flex-1 bg-[#F8F9FA] dark:bg-gray-900 overflow-y-auto relative p-6">
+                <div className="max-w-2xl mx-auto pb-24 md:pb-10">
+                  <header className="mb-6 flex justify-between items-start">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
+                            {isSavedPlace ? `${selectedDay} (備用清單)` : `Day ${selectedDay} 行程`}
+                        </h2>
+                        {!isSavedPlace && (
+                            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mt-1 text-sm mb-2">
+                                <Calendar size={14} className="text-[var(--primary)]" /> {formatDateDisplay(currentDayData.date)}
+                            </div>
+                        )}
+                        <MobileDragHint />
+                    </div>
+                    <Button onClick={() => openAddModal()}><Plus size={16} /> {isSavedPlace ? '新增地點' : '新增活動'}</Button>
+                  </header>
+                  <div className="relative pl-6 space-y-6">
+                    {!isSavedPlace && <div className="absolute left-[29px] top-4 bottom-4 w-0.5 bg-gray-200 dark:bg-gray-700" />}
+                    
+                    {currentDayData.activities.map((act, index) => {
+                      const TypeIcon = ACTIVITY_TYPES[act.type]?.icon || MapPin;
+                      const isMapUrl = (url) => url && (url.includes('maps') || url.includes('goo.gl'));
+                      const addressTarget = act.mapLink || (isMapUrl(act.link) ? act.link : null);
+                      
+                      return (
+                        <div key={act.id} draggable onDragStart={(e) => handleDragStart(e, index)} onDragOver={(e) => handleDragOver(e, index)} onDragEnd={handleDragEnd} className={`relative flex gap-4 group transition-all duration-300 ${draggedItem === index ? 'opacity-50 scale-95' : 'opacity-100'}`}>
+                          {!isSavedPlace && (
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-4 border-[#F8F9FA] dark:border-gray-900 ${ACTIVITY_TYPES[act.type]?.bg} ${ACTIVITY_TYPES[act.type]?.color}`}><TypeIcon size={14} /></div>
+                          )}
+                          <div className="flex-1"><GlassCard className={`p-4 flex gap-3 hover:shadow-md group-hover:border-[var(--primary)] ${isSavedPlace ? 'border-gray-200 dark:border-gray-600' : ''}`}>
+                                <div className="flex flex-col items-center text-gray-300 pt-0.5 shrink-0" onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+                                    <button onClick={(e) => { e.stopPropagation(); moveActivity(index, 'up'); }} disabled={index === 0} className="p-0.5 hover:text-[var(--primary)] md:hidden disabled:opacity-30 disabled:hover:text-gray-300"><ChevronUp size={18}/></button>
+                                    <GripVertical size={16} className="hidden md:block cursor-move hover:text-gray-500" />
+                                    <button onClick={(e) => { e.stopPropagation(); moveActivity(index, 'down'); }} disabled={index === currentDayData.activities.length - 1} className="p-0.5 hover:text-[var(--primary)] md:hidden disabled:opacity-30 disabled:hover:text-gray-300"><ChevronDown size={18}/></button>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start">
+                                        {act.time ? (
+                                            <span className="font-mono text-sm font-bold text-[var(--primary)] bg-[rgba(var(--primary-rgb),0.1)] px-2 rounded py-0.5">{act.time}</span>
+                                        ) : (
+                                            <span className="text-xs font-bold text-gray-500 px-2 py-0.5 border border-gray-200 rounded-full flex items-center gap-1"><TypeIcon size={10}/> {ACTIVITY_TYPES[act.type]?.label || '地點'}</span>
+                                        )}
+                                        {act.time && <span className="text-xs font-medium text-gray-500 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full">{ACTIVITY_TYPES[act.type]?.label || '地點'}</span>}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <h4 
+                                            className={`font-bold text-gray-800 dark:text-gray-100 truncate ${act.link ? 'cursor-pointer hover:text-[var(--primary)] transition-colors' : ''}`}
+                                            onClick={(e) => { e.stopPropagation(); act.link && window.open(act.link, '_blank'); }}
+                                        >
+                                            {act.location}
+                                        </h4>
+                                        {act.link && <MapPin size={14} className="text-[var(--primary)] shrink-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); window.open(act.link, '_blank'); }} />}
+                                    </div>
+                                    {act.address && (
+                                        <p 
+                                            className={`text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-start gap-1 ${addressTarget ? 'cursor-pointer hover:text-[var(--primary)] transition-colors' : ''}`}
+                                            onClick={(e) => {
+                                                if (addressTarget) {
+                                                    e.stopPropagation();
+                                                    window.open(addressTarget, '_blank');
+                                                }
+                                            }}
+                                            title={addressTarget ? "在 Google Maps 中開啟" : ""}
+                                        >
+                                            <MapPin size={12} className="shrink-0 mt-0.5"/> 
+                                            <span className={`line-clamp-2 ${addressTarget ? 'underline decoration-dashed underline-offset-2' : ''}`}>{act.address}</span>
+                                        </p>
+                                    )}
+                                    {act.operatingHours && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                                            <Clock size={12} className="shrink-0" />
+                                            <span>營業時間: {act.operatingHours}</span>
+                                        </p>
+                                    )}
+                                    {act.notes && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap">{act.notes}</p>}
+                                    
+                                    {/* Image Attachment displaying with Lightbox Support */}
+                                    {act.attachment && (
+                                        <div 
+                                            className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700 cursor-zoom-in group/img relative"
+                                            onClick={(e) => { e.stopPropagation(); setFullScreenImage(act.attachment); }}
+                                        >
+                                            <img src={act.attachment} className="w-full h-48 object-cover group-hover/img:scale-105 transition-transform duration-500" alt="attachment" />
+                                            <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
+                                                <span className="opacity-0 group-hover/img:opacity-100 bg-black/50 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm transition-opacity duration-300">點擊放大</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {act.cost > 0 && (
+                                        <div className="mt-3 text-xs font-semibold text-gray-400 flex items-center gap-1">
+                                            <JapaneseYen size={12} /> ¥{act.cost.toLocaleString()}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <button onClick={() => openEditModal(act)} className="p-1.5 text-gray-300 hover:text-[var(--primary)] hover:bg-[rgba(var(--primary-rgb),0.1)] rounded-lg transition-colors"><Pencil size={16} /></button>
+                                    <button onClick={() => handleDeleteActivity(act.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                                </div>
+                             </GlassCard></div>
+                        </div>
+                      );
+                    })}
+                    {currentDayData.activities.length === 0 && <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl"><div className="inline-block p-4 bg-gray-50 dark:bg-gray-800 rounded-full mb-3"><Calendar size={24} className="text-gray-300" /></div><p>這裡還沒有內容<br/>點擊右上角新增</p></div>}
+                  </div>
+                </div>
+              </div>
+              {showAddModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+                  <div className="bg-[#FFFFFF] dark:bg-gray-800 rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+                    <h3 className="text-xl font-bold mb-4 dark:text-white">{editingAct ? '編輯內容' : '新增內容'}</h3>
+                    <form onSubmit={handleSaveActivity} className="space-y-4">
+                      <div className="grid grid-cols-5 gap-2 mb-4">{Object.entries(ACTIVITY_TYPES).map(([key, config]) => (<label key={key} className="cursor-pointer"><input type="radio" name="type" value={key} className="peer hidden" defaultChecked={editingAct ? editingAct.type === key : key === 'Sightseeing'} /><div className={`flex flex-col items-center gap-1 p-2 rounded-lg border border-transparent hover:bg-gray-50 dark:hover:bg-gray-700 peer-checked:bg-gray-100 dark:peer-checked:bg-gray-700 peer-checked:border-gray-200 dark:peer-checked:border-gray-600 peer-checked:${config.color}`}><config.icon size={20} /><span className="text-[10px] font-medium dark:text-gray-300">{config.label}</span></div></label>))}</div>
+                      
+                      <div className="grid grid-cols-3 gap-3">
+                          {!isSavedPlace && (
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 mb-1">時間</label>
+                                  <input type="time" name="time" defaultValue={editingAct?.time} required className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                              </div>
+                          )}
+                          <div className={isSavedPlace ? "col-span-3" : "col-span-2"}>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">地點名稱</label>
+                              <input name="location" defaultValue={editingAct?.location} required className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                          </div>
+                      </div>
+                      
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">地址 (選填)</label>
+                          <input name="address" defaultValue={editingAct?.address} placeholder="例如: 福岡縣福岡市博多區..." className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">網站連結 (選填)</label>
+                              <input type="url" name="link" defaultValue={editingAct?.link} placeholder="https://..." className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">地圖連結 (選填)</label>
+                              <input type="url" name="mapLink" defaultValue={editingAct?.mapLink} placeholder="https://maps..." className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">營業時間 (選填)</label>
+                              <input name="operatingHours" defaultValue={editingAct?.operatingHours} placeholder="例如: 10:00–20:00" className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">預計花費 (JPY)</label>
+                              <input type="number" name="cost" defaultValue={editingAct?.cost} placeholder="0" className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                          </div>
+                      </div>
+                      
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">備註</label>
+                          <textarea name="notes" defaultValue={editingAct?.notes} rows="2" className="w-full border p-2 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-none outline-none focus:ring-2 focus:ring-[var(--primary)]" />
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">附件 (圖片/導覽圖)</label>
+                          <div 
+                              className="relative w-full h-24 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-200 dark:border-gray-600 hover:border-[var(--primary)] cursor-pointer transition-colors flex flex-col items-center justify-center text-gray-400 hover:text-[var(--primary)]"
+                              onClick={() => fileInputRef.current?.click()}
+                          >
+                              {previewImage ? (
+                                  <>
+                                      <img src={previewImage} className="w-full h-full object-cover" alt="preview" />
+                                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity"><Upload size={20}/></div>
+                                  </>
+                              ) : (
+                                  <>
+                                      <ImageIcon size={20} className="mb-1"/>
+                                      <span className="text-xs">點擊上傳附件照片</span>
+                                  </>
+                              )}
+                              <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
+                          </div>
+                      </div>
+
+                      <div className="flex gap-3 pt-4">
+                          <Button variant="outline" type="button" className="flex-1 justify-center" onClick={closeModal}>取消</Button>
+                          <Button type="submit" className="flex-1 justify-center">儲存</Button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        // --- Main Layout ---
+        const MainLayout = () => {
+          const { currentView, activeTrip, setActiveTripId, setCurrentView, updateTrip } = useContext(AppContext);
+          const [editingTrip, setEditingTrip] = useState(null);
+
+          const handleDashboardClick = () => { setCurrentView('dashboard'); setActiveTripId(null); };
+
+          const handleEditSave = (updatedData) => {
+            if (editingTrip) {
+              updateTrip(editingTrip.id, updatedData);
+              setEditingTrip(null);
+            }
+          };
+
+          const renderView = () => {
+            switch(currentView) {
+              case 'dashboard': return <Dashboard />;
+              case 'trip-detail': return <TripDetail />;
+              case 'food': return <FoodList />;
+              case 'budget': return <BudgetPage />;
+              case 'preparation': return <Preparation />; 
+              case 'reservations': return <Reservations />;
+              case 'shopping': return <ShoppingList />;
+              case 'settings': return <SettingsPage />;
+              default: return <Dashboard />;
+            }
+          };
+
+          return (
+            <div className={`min-h-screen flex flex-col`}>
+              <Header />
+              <div className="flex flex-col flex-1 relative">
+                {activeTrip && currentView !== 'dashboard' && (
+                  <div className="md:hidden h-14 bg-[#FFFFFF]/80 dark:bg-gray-900/80 backdrop-blur border-b border-gray-100 dark:border-gray-800 flex items-center px-4 justify-between sticky top-16 z-30">
+                     <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 truncate">
+                       <Home size={14} /> / <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{activeTrip.title}</span>
+                     </div>
+                     <button onClick={handleDashboardClick} className="flex items-center gap-1 px-2 py-1 rounded-2xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={16} /></button>
+                  </div>
+                )}
+                
+                {activeTrip && currentView !== 'dashboard' && (
+                  <div className="hidden md:flex h-16 items-center px-10 border-b border-gray-100 dark:border-gray-800 bg-[#FFFFFF]/80 dark:bg-gray-900/80 backdrop-blur sticky top-16 z-40 justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Home size={14} /> / <span className="font-medium text-gray-800 dark:text-gray-200">{activeTrip.title}</span>
+                        <button onClick={() => setEditingTrip(activeTrip)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-[var(--primary)]" title="編輯旅程"><Pencil size={12} /></button>
+                      </div>
+                      <div className="text-xs font-mono text-gray-400 border-l border-gray-200 dark:border-gray-700 pl-3">
+                        {activeTrip.startDate} - {activeTrip.endDate} {calculateDuration(activeTrip.startDate, activeTrip.endDate)}
+                      </div>
+                    </div>
+                    <button onClick={handleDashboardClick} className="flex items-center gap-2 px-3 py-1.5 rounded-2xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-sm font-medium"><X size={16} /> 返回總覽</button>
+                  </div>
+                )}
+                
+                {editingTrip && <EditTripModal trip={editingTrip} onClose={() => setEditingTrip(null)} onSave={handleEditSave} />}
+
+                <main className="flex-1 relative">
+                   {renderView()}
+                </main>
+
+                {activeTrip && currentView !== 'dashboard' && <BottomNav />}
+                
+                {/* Global Image Lightbox Component */}
+                <ImageLightbox />
+              </div>
+            </div>
+          );
+        };
+
+        // Render the App
+        const rootElement = document.getElementById('root');
+        const root = createRoot(rootElement);
+        root.render(
+          <AppProvider>
+            <MainLayout />
+          </AppProvider>
+        );
+    </script>
+</body>
+</html>
